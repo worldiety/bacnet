@@ -24,7 +24,7 @@ This scaffold includes:
 - Basic station/network addressing in `address.go`
 - Unit tests for the exported foundation
 
-## Project layout
+## Project structure
 
 ```text
 .
@@ -37,8 +37,20 @@ This scaffold includes:
 ├── errors.go
 ├── errors_test.go
 ├── go.mod
-└── types.go
+├── types.go
+├── types_test.go
+├── apdu/        (planned: BACnet application layer)
+├── bip/         (planned: BACnet/IP BVLC + transport)
+├── encoding/    (planned: BACnet tag/value encoding)
+├── npdu/        (planned: BACnet network layer)
+├── internal/    (planned: non-public helpers)
+├── testdata/    (planned: packet fixtures)
+└── examples/    (deferred until API is stable)
 ```
+
+The current implementation lives in the root `bacnet` package. Planned
+directories are extension points for BACnet/IP layers and remain lightweight
+until those features are implemented.
 
 ## Example
 
@@ -48,7 +60,7 @@ package main
 import (
 	"fmt"
 
-	"bacnet"
+	"go.wdy.de/bacnet"
 )
 
 func main() {
@@ -87,7 +99,7 @@ Natural next additions for the library are:
 The module currently uses the local module path declared in `go.mod`:
 
 ```go
-module bacnet
+module go.wdy.de/bacnet
 ```
 
 If you plan to publish the library, update that module path to your repository URL.

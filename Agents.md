@@ -14,6 +14,7 @@ The project focuses on the IP protocol, other Bacnet protocols may be implemente
 ## Development requirements
 - The project must be developed using best practices for Go development, including proper error handling.
 - The project must include unit tests for all major functionality, with a goal of achieving at least 80% code coverage.
+- The example directory is ignored for development until the project has a stable API (and this line is removed)
 
 ## Bacnet standard requirements
 - The project must implement the Bacnet standard as defined in the official Bacnet documentation.
