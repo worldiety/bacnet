@@ -13,8 +13,14 @@ const (
 )
 
 // DatagramConn is the small UDP surface required by the BVLC transport.
+//
+// The concrete connection is expected to already be bound to the desired local
+// UDP address/port before it is passed to NewTransport.
 type DatagramConn interface {
+	// ReadFromUDPAddrPort reads from the already-bound local socket and returns
+	// the sender's remote address/port.
 	ReadFromUDPAddrPort(p []byte) (n int, addr netip.AddrPort, err error)
+	// WriteToUDPAddrPort sends one datagram to the given remote address/port.
 	WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (n int, err error)
 }
 
@@ -37,6 +43,8 @@ func NewTransport(conn DatagramConn, maxDatagramSize int) (*Transport, error) {
 }
 
 // ReceiveFrame reads one datagram and decodes it as BVLC frame.
+//
+// The returned netip.AddrPort is the remote sender address/port.
 func (t *Transport) ReceiveFrame() (Frame, netip.AddrPort, error) {
 	buf := make([]byte, t.maxDatagramSize)
 	n, addr, err := t.conn.ReadFromUDPAddrPort(buf)
@@ -66,4 +74,3 @@ func (t *Transport) SendFrame(addr netip.AddrPort, frame Frame) error {
 	}
 	return nil
 }
-

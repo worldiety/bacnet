@@ -29,7 +29,11 @@ The Go module path is `go.wdy.de/bacnet`.
 
 ## Development requirements
 - The project must be developed using best practices for Go development, including proper error handling.
-- The project must include unit tests for all major functionality, with a goal of achieving at least 80% code coverage.
+- The project should include unit tests for all major functionality, with a goal of achieving at least 80% code coverage.
+- Functions should be annotated with comments that explain their purpose, parameters, preconditions, and return values.
+- The packages define interface types for functionality like network (e.g. `DatagramConn` in `bip/transport.go`) to allow users to implement their own mocks for testing. 
+  - The project should include tests that use these interfaces with in-memory implementations (e.g. `bip/transport_test.go`) to verify behavior without external dependencies.
+  - The project should implement these interfaces in separate packages in subdirectories (e.g. `bip/conn/`), so users can use them as reference implementations or import them directly
 - The example directory is ignored for development until the project has a stable API (and this line is removed)
 - Run tests: `go test ./...`; generate coverage: `go test -coverprofile=coverage.out ./...`
 
