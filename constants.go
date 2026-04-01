@@ -4,9 +4,6 @@ const (
 	// ProtocolVersion is the BACnet protocol version defined by the standard.
 	ProtocolVersion byte = 0x01
 
-	// BACnetIPBVLCType is the fixed BVLC type used by BACnet/IP.
-	BACnetIPBVLCType byte = 0x81
-
 	// DefaultPort is the default UDP port for BACnet/IP (0xBAC0 / 47808).
 	DefaultPort uint16 = 0xBAC0
 
@@ -24,4 +21,3 @@ const (
 	// GlobalBroadcastNetwork represents the BACnet global broadcast network.
 	GlobalBroadcastNetwork NetworkNumber = 0xFFFF
 )
-

@@ -118,17 +118,17 @@ func (id ObjectIdentifier) String() string {
 type PropertyIdentifier uint32
 
 const (
-	PropertyIdentifierAckedTransitions   PropertyIdentifier = 0
-	PropertyIdentifierObjectIdentifier   PropertyIdentifier = 75
-	PropertyIdentifierObjectName         PropertyIdentifier = 77
-	PropertyIdentifierObjectType         PropertyIdentifier = 79
-	PropertyIdentifierPresentValue       PropertyIdentifier = 85
-	PropertyIdentifierDescription        PropertyIdentifier = 28
-	PropertyIdentifierStatusFlags        PropertyIdentifier = 111
-	PropertyIdentifierUnits              PropertyIdentifier = 117
-	PropertyIdentifierVendorName         PropertyIdentifier = 121
-	PropertyIdentifierProtocolVersion    PropertyIdentifier = 98
-	PropertyIdentifierProtocolRevision   PropertyIdentifier = 96
+	PropertyIdentifierAckedTransitions           PropertyIdentifier = 0
+	PropertyIdentifierObjectIdentifier           PropertyIdentifier = 75
+	PropertyIdentifierObjectName                 PropertyIdentifier = 77
+	PropertyIdentifierObjectType                 PropertyIdentifier = 79
+	PropertyIdentifierPresentValue               PropertyIdentifier = 85
+	PropertyIdentifierDescription                PropertyIdentifier = 28
+	PropertyIdentifierStatusFlags                PropertyIdentifier = 111
+	PropertyIdentifierUnits                      PropertyIdentifier = 117
+	PropertyIdentifierVendorName                 PropertyIdentifier = 121
+	PropertyIdentifierProtocolVersion            PropertyIdentifier = 98
+	PropertyIdentifierProtocolRevision           PropertyIdentifier = 96
 	PropertyIdentifierApplicationSoftwareVersion PropertyIdentifier = 12
 )
 
@@ -162,4 +162,3 @@ func (p PropertyIdentifier) String() string {
 		return fmt.Sprintf("property-identifier(%d)", p)
 	}
 }
-
