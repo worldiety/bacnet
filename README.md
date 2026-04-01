@@ -10,10 +10,10 @@ into fuller BACnet/IP support.
 - Pure Go implementation
 - No cgo
 - Minimal dependencies (standard library only)
-- implementation of BACnet application and network layers, as defined in the standard (ANSI/ASHRAE 135-2024)
+- Implementation of BACnet application and network layers as defined in ANSI/ASHRAE 135-2024
 - BACnet implementation using IP in the link layer (BACnet/IP)
-- relying on the OS for physical layer and transport (UDP)
-- - implementation of the physical layer is not within the scope of this library
+- Relying on the OS for physical layer and transport (UDP)
+- Physical layer implementation is out of scope for this library
 - Easy to test and extend
 
 ## Current foundation
@@ -42,8 +42,8 @@ This scaffold includes:
 ├── go.mod
 ├── types.go
 ├── types_test.go
-├── apdu/        (planned: BACnet application layer)
-├── bip/         (planned: BACnet/IP BVLC + transport)
+├── apdu/        (active: BACnet application layer scaffold)
+├── bip/         (active: BACnet/IP BVLC + transport scaffold)
 ├── encoding/    (planned: BACnet tag/value encoding)
 ├── npdu/        (planned: BACnet network layer)
 ├── internal/    (planned: non-public helpers)
@@ -51,9 +51,9 @@ This scaffold includes:
 └── examples/    (deferred until API is stable)
 ```
 
-The current implementation lives in the root `bacnet` package. Planned
-directories are extension points for BACnet/IP layers and remain lightweight
-until those features are implemented.
+The current implementation includes the root `bacnet` package plus active `bip` and
+`apdu` scaffolds. Planned directories remain extension points for additional
+BACnet/IP layers.
 
 ## Example
 
@@ -92,9 +92,9 @@ go test ./...
 
 Natural next additions for the library are:
 
-1. BACnet/IP BVLC frame encoding/decoding
-2. NPDU header parsing and serialization
-3. APDU support for core confirmed and unconfirmed services
+1. NPDU header parsing and serialization
+2. Expanded APDU wire compatibility for additional services
+3. Expanded BACnet/IP Annex J support (for example BBMD/FDT management)
 4. A simple BACnet/IP client for discovery and property reads
 
 ## Notes
@@ -106,4 +106,3 @@ module go.wdy.de/bacnet
 ```
 
 If you plan to publish the library, update that module path to your repository URL.
-

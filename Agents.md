@@ -33,7 +33,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - Functions should be annotated with comments that explain their purpose, parameters, preconditions, and return values.
 - The packages define interface types for functionality like network (e.g. `DatagramConn` in `bip/transport.go`) to allow users to implement their own mocks for testing. 
   - The project should include tests that use these interfaces with in-memory implementations (e.g. `bip/transport_test.go`) to verify behavior without external dependencies.
-  - The project should implement these interfaces in separate packages in subdirectories (e.g. `bip/conn/`), so users can use them as reference implementations or import them directly
+- The `apdu` package follows the same interface-first pattern (`Codec`, `Transport` in `apdu/ase.go`); tests use in-memory implementations in `apdu/ase_test.go` to verify dispatch and confirmed invoke lifecycle behavior.
 - The example directory is ignored for development until the project has a stable API (and this line is removed)
 - Run tests: `go test ./...`; generate coverage: `go test -coverprofile=coverage.out ./...`
 
@@ -44,6 +44,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - **Defensive copies**: slice-backed fields must be copied on both construction and access (see `NewAddress` and `Address.MACBytes()`).
 - **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`).
 - **`PropertyIdentifier`**: fully implemented in `types.go` with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` method. Follow the same pattern when adding new property identifiers.
+- **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
 
 ### Test conventions
 - Test files use the same package as the code under test (e.g. `package bacnet`, `package apdu`, `package bip`) — **not** `*_test` external packages.
@@ -62,3 +63,4 @@ The Go module path is `go.wdy.de/bacnet`.
 - The project uses Git for version control, and all releases must be tagged with the appropriate version number in the Git repository.
 - The project uses commitizen for consistent commit messages, following the format `type(scope): description` (e.g. `feat(address): add NewAddress constructor`).
 - All commits must be made with the appropriate type (e.g. `feat`, `fix`, `docs`, `refactor`, etc.) and scope (e.g. `address`, `types`, `errors`, etc.) to ensure clear commit history and accurate changelog generation.
+- Commit/version automation is configured in `.cz.yaml` (`name: cz_conventional_commits`, `version_scheme: semver`, `major_version_zero: true`, `tag_format: $version`); keep `Agents.md` guidance aligned with that file when release workflow changes.
