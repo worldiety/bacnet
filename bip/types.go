@@ -2,12 +2,25 @@ package bip
 
 import (
 	"fmt"
+	"math"
+
+	"go.wdy.de/bacnet"
 )
 
 const (
-	// BVLCHeaderLen is the size of the Annex J BVLC header.
+	// BVLCHeaderLen is the size of the Annex J BVLC header in bytes.
 	BVLCHeaderLen = 4
 )
+
+type BVLCHeader struct {
+	BVLCType
+	BVLCFunction
+	BVLCLength
+}
+
+func (h *BVLCHeader) Valid() bool {
+	return h.BVLCType.Valid() && h.BVLCFunction.Valid()
+}
 
 type BVLCType byte
 
@@ -33,8 +46,16 @@ func (t BVLCType) String() string {
 
 type BVLCLength uint16
 
+func NewBVLCLength(length int) (BVLCLength, error) {
+	if length < 0 || length > math.MaxUint16 {
+		return 0, &bacnet.ValidationError{Field: "BVLCLength", Value: length, Err: ErrInvalidLength}
+	}
+
+	return BVLCLength(length), nil
+}
+
 // BVLCFunction identifies a BVLC function code.
-type BVLCFunction byte
+type BVLCFunction uint8
 
 // Constants for BVLCFunction codes as defined in Annex J of the BACnet standard (ANSI/ASHRAE 135-2024)
 const (

@@ -16,6 +16,10 @@ type fakeDatagramConn struct {
 	writtenAddr netip.AddrPort
 }
 
+func (f *fakeDatagramConn) Close() error {
+	return nil
+}
+
 func (f *fakeDatagramConn) ReadFromUDPAddrPort(p []byte) (int, netip.AddrPort, error) {
 	if f.readErr != nil {
 		return 0, netip.AddrPort{}, f.readErr
@@ -100,4 +104,3 @@ func TestTransportSendReceiveFrame(t *testing.T) {
 		t.Fatalf("decoded function = %v, want %v", decoded.Function, FunctionOriginalBroadcastNPDU)
 	}
 }
-

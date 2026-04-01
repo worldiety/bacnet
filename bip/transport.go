@@ -2,6 +2,7 @@ package bip
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 
 	"go.wdy.de/bacnet"
@@ -22,12 +23,45 @@ type DatagramConn interface {
 	ReadFromUDPAddrPort(p []byte) (n int, addr netip.AddrPort, err error)
 	// WriteToUDPAddrPort sends one datagram to the given remote address/port.
 	WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (n int, err error)
+
+	Close() error
+}
+
+func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
+	if !addr.IsValid() {
+		return nil, fmt.Errorf("invalid ip address: %v", addr)
+	}
+
+	if addr.Is4() {
+		udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
+		conn, err := net.ListenUDP("udp4", udpAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
+		}
+		return conn, nil
+	}
+
+	if addr.Is6() {
+		udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
+		conn, err := net.ListenUDP("udp6", udpAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
+		}
+
+		return conn, nil
+	}
+
+	return nil, fmt.Errorf("invalid ip address: %v", addr)
 }
 
 // Transport sends and receives BVLC frames via UDP-like datagrams.
 type Transport struct {
 	conn            DatagramConn
 	maxDatagramSize int
+}
+
+func (t *Transport) Close() error {
+	return t.conn.Close()
 }
 
 // NewTransport validates and constructs a BVLC transport.
