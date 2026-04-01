@@ -9,8 +9,8 @@ The Go module path is `go.wdy.de/bacnet`.
 | Path | Status | Purpose |
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
-| `bip/` | stub | BACnet/IP BVLC + transport (placeholder `package bip` only) |
-| `apdu/` | planned | BACnet application layer |
+| `bip/` | active | BACnet/IP BVLC frame encode/decode + UDP datagram transport scaffold |
+| `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
 | `encoding/` | planned | BACnet tag/value encoding |
 | `npdu/` | planned | BACnet network layer |
 | `internal/buffer/` | planned | Non-public buffer helpers |
@@ -42,7 +42,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - **`PropertyIdentifier`**: fully implemented in `types.go` with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` method. Follow the same pattern when adding new property identifiers.
 
 ### Test conventions
-- Test files use `package bacnet` (white-box, same package — **not** `package bacnet_test`).
+- Test files use the same package as the code under test (e.g. `package bacnet`, `package apdu`, `package bip`) — **not** `*_test` external packages.
 - Tests follow the table-driven pattern using `t.Run` with a `tests []struct{name, input, want/wantErr}` slice — use this for validation and `String()` coverage.
 - Straight-line (non-table) tests are acceptable for mutation/side-effect checks where a table adds no clarity (e.g. `TestNewAddressCopiesMAC`).
 - Use `errors.Is(err, ErrXxx)` for all error assertions — never compare error strings directly.

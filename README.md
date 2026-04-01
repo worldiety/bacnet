@@ -10,7 +10,7 @@ into fuller BACnet/IP support.
 - Pure Go implementation
 - No cgo
 - Minimal dependencies (standard library only)
-- implementation of BACnet application and network layers, as defined in the standard
+- implementation of BACnet application and network layers, as defined in the standard (ANSI/ASHRAE 135-2024)
 - BACnet implementation using IP in the link layer (BACnet/IP)
 - relying on the OS for physical layer and transport (UDP)
 - - implementation of the physical layer is not within the scope of this library
