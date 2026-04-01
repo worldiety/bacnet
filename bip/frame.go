@@ -2,6 +2,7 @@ package bip
 
 import (
 	"encoding/binary"
+	"net/netip"
 
 	"go.wdy.de/bacnet"
 )
@@ -13,8 +14,12 @@ type Frame struct {
 	payload  []byte
 }
 
-// NewFrame constructs a BVLC frame with BACnet/IP type and validates inputs.
-func NewFrame(function BVLCFunction, payload []byte) (Frame, error) {
+// NewFrameWithType constructs a BVLC frame for the given BVLC type.
+func NewFrameWithType(frameType BVLCType, function BVLCFunction, payload []byte) (Frame, error) {
+	if !frameType.Valid() {
+		return Frame{}, &bacnet.ValidationError{Field: "type", Value: frameType, Err: ErrInvalidBVLCType}
+	}
+
 	if !function.Valid() {
 		return Frame{}, &bacnet.ValidationError{Field: "function", Value: function, Err: ErrInvalidFunction}
 	}
@@ -23,11 +28,16 @@ func NewFrame(function BVLCFunction, payload []byte) (Frame, error) {
 		return Frame{}, &bacnet.ValidationError{Field: "length", Value: len(payload) + BVLCHeaderLen, Err: ErrInvalidLength}
 	}
 
-	return Frame{
-		Type:     BVLCTypeBACnetIP,
-		Function: function,
-		payload:  cloneBytes(payload),
-	}, nil
+	return Frame{Type: frameType, Function: function, payload: cloneBytes(payload)}, nil
+}
+
+// NewFrameForAddress constructs a BVLC frame type from IPv4/IPv6 address family.
+func NewFrameForAddress(addr netip.Addr, function BVLCFunction, payload []byte) (Frame, error) {
+	frameType, err := bvlcTypeForAddress(addr)
+	if err != nil {
+		return Frame{}, err
+	}
+	return NewFrameWithType(frameType, function, payload)
 }
 
 // DecodeFrame parses a raw BVLC datagram.

@@ -28,30 +28,43 @@ type DatagramConn interface {
 }
 
 func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
+	network, err := udpNetworkForAddress(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
+	conn, err := net.ListenUDP(network, udpAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
+	}
+	return conn, nil
+}
+
+func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if !addr.IsValid() {
-		return nil, fmt.Errorf("invalid ip address: %v", addr)
+		return "", &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
 	}
-
 	if addr.Is4() {
-		udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
-		conn, err := net.ListenUDP("udp4", udpAddr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
-		}
-		return conn, nil
+		return "udp4", nil
 	}
-
 	if addr.Is6() {
-		udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
-		conn, err := net.ListenUDP("udp6", udpAddr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
-		}
-
-		return conn, nil
+		return "udp6", nil
 	}
+	return "", &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+}
 
-	return nil, fmt.Errorf("invalid ip address: %v", addr)
+func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
+	if !addr.IsValid() {
+		return 0, &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+	}
+	if addr.Is4() {
+		return BVLCTypeBACnetIP, nil
+	}
+	if addr.Is6() {
+		return BVLCTypeBACnetIP6, nil
+	}
+	return 0, &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
 }
 
 // Transport sends and receives BVLC frames via UDP-like datagrams.

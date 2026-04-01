@@ -9,6 +9,7 @@ func TestBVLCTypeString(t *testing.T) {
 		want  string
 	}{
 		{name: "bacnet ip", input: BVLCTypeBACnetIP, want: "bacnet-ip"},
+		{name: "bacnet ip6", input: BVLCTypeBACnetIP6, want: "bacnet-ip6"},
 		{name: "fallback", input: BVLCType(0x99), want: "bvlc-type(153)"},
 	}
 
@@ -18,6 +19,18 @@ func TestBVLCTypeString(t *testing.T) {
 				t.Fatalf("String() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBVLCTypeValid(t *testing.T) {
+	if !BVLCTypeBACnetIP.Valid() {
+		t.Fatal("expected bacnet-ip type to be valid")
+	}
+	if !BVLCTypeBACnetIP6.Valid() {
+		t.Fatal("expected bacnet-ip6 type to be valid")
+	}
+	if BVLCType(0x99).Valid() {
+		t.Fatal("unexpected valid BVLC type")
 	}
 }
 

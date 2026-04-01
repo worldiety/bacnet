@@ -39,6 +39,8 @@ func (t BVLCType) String() string {
 	switch t {
 	case BVLCTypeBACnetIP:
 		return "bacnet-ip"
+	case BVLCTypeBACnetIP6:
+		return "bacnet-ip6"
 	default:
 		return fmt.Sprintf("bvlc-type(%d)", t)
 	}

@@ -2,12 +2,13 @@ package bip
 
 import (
 	"errors"
+	"net/netip"
 	"testing"
 )
 
 func TestNewFrameCopiesPayload(t *testing.T) {
 	payload := []byte{0x01, 0x02, 0x03}
-	frame, err := NewFrame(FunctionOriginalUnicastNPDU, payload)
+	frame, err := NewFrameWithType(BVLCTypeBACnetIP6, FunctionOriginalUnicastNPDU, payload)
 	if err != nil {
 		t.Fatalf("NewFrame returned error: %v", err)
 	}
@@ -27,20 +28,22 @@ func TestNewFrameCopiesPayload(t *testing.T) {
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
 	tests := []struct {
-		name     string
-		function BVLCFunction
-		payload  []byte
+		name      string
+		frameType BVLCType
+		function  BVLCFunction
+		payload   []byte
 	}{
-		{name: "original unicast", function: FunctionOriginalUnicastNPDU, payload: []byte{0x11, 0x22}},
-		{name: "original broadcast", function: FunctionOriginalBroadcastNPDU, payload: []byte{0x33}},
-		{name: "result no payload", function: FunctionResult, payload: nil},
+		{name: "ipv4 original unicast", frameType: BVLCTypeBACnetIP, function: FunctionOriginalUnicastNPDU, payload: []byte{0x11, 0x22}},
+		{name: "ipv4 original broadcast", frameType: BVLCTypeBACnetIP, function: FunctionOriginalBroadcastNPDU, payload: []byte{0x33}},
+		{name: "ipv4 result no payload", frameType: BVLCTypeBACnetIP, function: FunctionResult, payload: nil},
+		{name: "ipv6 original unicast", frameType: BVLCTypeBACnetIP6, function: FunctionOriginalUnicastNPDU, payload: []byte{0x44, 0x55}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			frame, err := NewFrame(tt.function, tt.payload)
+			frame, err := NewFrameWithType(tt.frameType, tt.function, tt.payload)
 			if err != nil {
-				t.Fatalf("NewFrame returned error: %v", err)
+				t.Fatalf("NewFrameWithType returned error: %v", err)
 			}
 
 			raw, err := frame.Encode()
@@ -53,8 +56,8 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 				t.Fatalf("DecodeFrame returned error: %v", err)
 			}
 
-			if decoded.Type != BVLCTypeBACnetIP {
-				t.Fatalf("decoded type = %v, want %v", decoded.Type, BVLCTypeBACnetIP)
+			if decoded.Type != tt.frameType {
+				t.Fatalf("decoded type = %v, want %v", decoded.Type, tt.frameType)
 			}
 			if decoded.Function != tt.function {
 				t.Fatalf("decoded function = %v, want %v", decoded.Function, tt.function)
@@ -68,6 +71,37 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 				if got[i] != tt.payload[i] {
 					t.Fatalf("payload[%d] = 0x%02x, want 0x%02x", i, got[i], tt.payload[i])
 				}
+			}
+		})
+	}
+}
+
+func TestNewFrameForAddressChoosesType(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     netip.Addr
+		wantType BVLCType
+		wantErr  error
+	}{
+		{name: "ipv4", addr: netip.MustParseAddr("192.168.10.20"), wantType: BVLCTypeBACnetIP},
+		{name: "ipv6", addr: netip.MustParseAddr("2001:db8::1"), wantType: BVLCTypeBACnetIP6},
+		{name: "invalid", addr: netip.Addr{}, wantErr: ErrInvalidIPAddress},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			frame, err := NewFrameForAddress(tt.addr, FunctionOriginalUnicastNPDU, []byte{0xAA})
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("NewFrameForAddress error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewFrameForAddress error = %v", err)
+			}
+			if frame.Type != tt.wantType {
+				t.Fatalf("frame type = %v, want %v", frame.Type, tt.wantType)
 			}
 		})
 	}

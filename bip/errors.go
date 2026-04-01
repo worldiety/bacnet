@@ -7,9 +7,9 @@ var (
 	ErrInvalidFunction  = errors.New("invalid BVLC function")
 	ErrInvalidLength    = errors.New("invalid BVLC length")
 	ErrFrameTooShort    = errors.New("BVLC frame too short")
+	ErrInvalidIPAddress = errors.New("invalid ip address")
 	ErrNilDatagramConn  = errors.New("nil datagram conn")
 	ErrDatagramTooLarge = errors.New("datagram too large")
 	ErrReadFailure      = errors.New("read failure")
 	ErrWriteFailure     = errors.New("write failure")
 )
-
