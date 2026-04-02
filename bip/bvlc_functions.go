@@ -1,6 +1,7 @@
 package bip
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"net/netip"
@@ -151,9 +152,7 @@ func (b *BdtEntry) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
 	}
 
-	copy(out[0:4], b.address.Addr().AsSlice())
-	out[5] = uint8(b.address.Port() >> 8)
-	out[6] = uint8(b.address.Port() & 0xFF)
+	copy(out[0:6], encodeAddressPortIpV4(b.address))
 
 	copy(out[7:9], b.broadcastDistributionMask)
 
@@ -165,17 +164,9 @@ func (b *BdtEntry) Decode(data []byte) error {
 		return fmt.Errorf("invalid length for bdt entry: %d", len(data))
 	}
 
-	ip, ok := netip.AddrFromSlice(data[0:4])
-	if !ok {
-		return fmt.Errorf("invalid ip in bdt entry")
-	}
-
-	port := uint16(data[4])<<8 | uint16(data[5])
-
-	address := netip.AddrPortFrom(ip, port)
-
-	if !address.IsValid() {
-		return fmt.Errorf("invalid ip in bdt entry")
+	address, err := decodeAddressPortIpV4(data[0:6])
+	if err != nil {
+		return fmt.Errorf("invalid ip in bdt entry: %w", err)
 	}
 
 	mask := net.IPv4Mask(data[6], data[7], data[8], data[9])
@@ -516,4 +507,24 @@ func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
 
 	*r = res
 	return nil
+}
+
+func encodeAddressPortIpV4(address netip.AddrPort) []byte {
+	out := make([]byte, 0, 6)
+
+	copy(out[0:4], address.Addr().AsSlice())
+	binary.BigEndian.PutUint16(out[4:], address.Port())
+
+	return out
+}
+
+func decodeAddressPortIpV4(data []byte) (netip.AddrPort, error) {
+	if len(data) != 6 {
+		return netip.AddrPort{}, fmt.Errorf("invalid length for bvlc-forwarded-npdu")
+	}
+
+	addr := netip.AddrFrom4([4]byte{data[0], data[1], data[2], data[3]})
+	port := binary.BigEndian.Uint16(data[4:6])
+
+	return netip.AddrPortFrom(addr, port), nil
 }
