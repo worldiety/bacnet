@@ -30,7 +30,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	tests := []struct {
 		name      string
 		frameType BVLCType
-		function  BVLCFunction
+		function  BVLCFunctionType
 		payload   []byte
 	}{
 		{name: "ipv4 original unicast", frameType: BVLCTypeBACnetIP, function: FunctionOriginalUnicastNPDU, payload: []byte{0x11, 0x22}},

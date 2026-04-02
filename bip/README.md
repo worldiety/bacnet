@@ -19,8 +19,19 @@ Implemented as a lightweight core for:
 
 The package does not yet implement BBMD/FDT management logic.
 
-## run tests
+### ipv6 notes
 
-```sh
-go test ./...
+- Use `NewFrameForAddress(addr, function, payload)` to select `BVLCTypeBACnetIP` (`0x81`) or `BVLCTypeBACnetIP6` (`0x82`) from the destination address family.
+- Use `NewFrameWithType(frameType, function, payload)` when the BVLC type must be explicit.
+- `NewDatagramConn(addr)` binds with `udp4` for IPv4 and `udp6` for IPv6 addresses.
+
+```go
+addr4 := netip.MustParseAddr("192.168.1.20")
+addr6 := netip.MustParseAddr("2001:db8::20")
+
+f4, _ := bip.NewFrameForAddress(addr4, bip.FunctionOriginalUnicastNPDU, []byte{0x01})
+f6, _ := bip.NewFrameForAddress(addr6, bip.FunctionOriginalUnicastNPDU, []byte{0x01})
+
+_ = f4 // f4.Type == bip.BVLCTypeBACnetIP
+_ = f6 // f6.Type == bip.BVLCTypeBACnetIP6
 ```

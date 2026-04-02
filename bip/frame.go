@@ -10,12 +10,12 @@ import (
 // Frame is a decoded Annex J BVLC frame.
 type Frame struct {
 	Type     BVLCType
-	Function BVLCFunction
+	Function BVLCFunctionType
 	payload  []byte
 }
 
 // NewFrameWithType constructs a BVLC frame for the given BVLC type.
-func NewFrameWithType(frameType BVLCType, function BVLCFunction, payload []byte) (Frame, error) {
+func NewFrameWithType(frameType BVLCType, function BVLCFunctionType, payload []byte) (Frame, error) {
 	if !frameType.Valid() {
 		return Frame{}, bacnet.NewValidationError("type", frameType, ErrInvalidBVLCType)
 	}
@@ -32,7 +32,7 @@ func NewFrameWithType(frameType BVLCType, function BVLCFunction, payload []byte)
 }
 
 // NewFrameForAddress constructs a BVLC frame type from IPv4/IPv6 address family.
-func NewFrameForAddress(addr netip.Addr, function BVLCFunction, payload []byte) (Frame, error) {
+func NewFrameForAddress(addr netip.Addr, function BVLCFunctionType, payload []byte) (Frame, error) {
 	frameType, err := bvlcTypeForAddress(addr)
 	if err != nil {
 		return Frame{}, err
@@ -51,7 +51,7 @@ func DecodeFrame(raw []byte) (Frame, error) {
 		return Frame{}, bacnet.NewValidationError("type", frameType, ErrInvalidBVLCType)
 	}
 
-	function := BVLCFunction(raw[1])
+	function := BVLCFunctionType(raw[1])
 	if !function.Valid() {
 		return Frame{}, bacnet.NewValidationError("function", function, ErrInvalidFunction)
 	}

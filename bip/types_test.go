@@ -37,14 +37,14 @@ func TestBVLCTypeValid(t *testing.T) {
 func TestFunctionString(t *testing.T) {
 	tests := []struct {
 		name  string
-		input BVLCFunction
+		input BVLCFunctionType
 		want  string
 	}{
 		{name: "result", input: FunctionResult, want: "result"},
 		{name: "forwarded", input: FunctionForwardedNPDU, want: "forwarded-npdu"},
 		{name: "original unicast", input: FunctionOriginalUnicastNPDU, want: "original-unicast-npdu"},
 		{name: "original broadcast", input: FunctionOriginalBroadcastNPDU, want: "original-broadcast-npdu"},
-		{name: "fallback", input: BVLCFunction(0xFF), want: "bvlc-function(255)"},
+		{name: "fallback", input: BVLCFunctionType(0xFF), want: "bvlc-function(255)"},
 	}
 
 	for _, tt := range tests {
@@ -60,7 +60,7 @@ func TestFunctionValid(t *testing.T) {
 	if !FunctionOriginalBroadcastNPDU.Valid() {
 		t.Fatal("expected original-broadcast-npdu to be valid")
 	}
-	if BVLCFunction(0x80).Valid() {
+	if BVLCFunctionType(0x80).Valid() {
 		t.Fatal("unexpected valid function")
 	}
 }
