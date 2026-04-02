@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"go.wdy.de/bacnet"
 )
@@ -587,4 +588,68 @@ func decodeAddressPortIpV4(data []byte) (netip.AddrPort, error) {
 	port := binary.BigEndian.Uint16(data[4:6])
 
 	return netip.AddrPortFrom(addr, port), nil
+}
+
+// TTL is a time to live in seconds
+type TTL uint16
+
+func (t TTL) ToDuration() time.Duration {
+	return time.Duration(t) * time.Second
+}
+
+type RegisterForeignDevice struct {
+	header BVLCHeader
+	ttl    TTL
+}
+
+func (r *RegisterForeignDevice) BVLCFunctionType() BVLCFunctionType {
+	return FunctionRegisterForeignDevice
+}
+
+func (r *RegisterForeignDevice) Valid() bool {
+	return r.header.Valid() && r.ttl != 0
+}
+
+func (r *RegisterForeignDevice) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-register-foreign-device")
+	}
+
+	headerBytes, err := r.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-register-foreign-device: %w", err)
+	}
+
+	out := make([]byte, BVLCHeaderLen+2)
+	copy(out[0:BVLCHeaderLen], headerBytes)
+
+	binary.BigEndian.PutUint16(out[BVLCHeaderLen:], uint16(r.ttl))
+
+	return out, nil
+}
+
+func (r *RegisterForeignDevice) Decode(data []byte) error {
+	if r == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	if len(data) != BVLCHeaderLen+2 {
+		return fmt.Errorf("invalid length for bvlc-register-foreign-device")
+	}
+
+	res := RegisterForeignDevice{
+		header: BVLCHeader{},
+		ttl:    TTL(0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-register-foreign-device: %w", err)
+	}
+
+	res.ttl = TTL(binary.BigEndian.Uint16(data[BVLCHeaderLen:]))
+
+	*r = res
+
+	return nil
 }
