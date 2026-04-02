@@ -692,3 +692,63 @@ func (r *ReadForeignDeviceTable) Decode(data []byte) error {
 
 	return nil
 }
+
+type ReadForeignDeviceTableAck struct {
+	header  BVLCHeader
+	entries BdtEntryList
+}
+
+func (r *ReadForeignDeviceTableAck) BVLCFunctionType() BVLCFunctionType {
+	return FunctionReadForeignDeviceTableAck
+}
+
+func (r *ReadForeignDeviceTableAck) Valid() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.header.Valid() && r.entries.Valid()
+}
+
+func (r *ReadForeignDeviceTableAck) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-read-foreign-device-table-ack")
+	}
+
+	headerBytes, err := r.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-foreign-device-table-ack: %w", err)
+	}
+
+	listBytes, err := r.entries.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-foreign-device-table-ack: %w", err)
+	}
+
+	return append(headerBytes, listBytes...), nil
+}
+
+func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
+	if r == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	res := ReadForeignDeviceTableAck{
+		header:  BVLCHeader{},
+		entries: make(BdtEntryList, 0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-foreign-device-table-ack: %w", err)
+	}
+
+	err = res.entries.Decode(data[BVLCHeaderLen:])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-foreign-device-table-ack: %w", err)
+	}
+
+	*r = res
+
+	return nil
+}
