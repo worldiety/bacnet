@@ -653,3 +653,42 @@ func (r *RegisterForeignDevice) Decode(data []byte) error {
 
 	return nil
 }
+
+type ReadForeignDeviceTable struct {
+	header BVLCHeader
+}
+
+func (r *ReadForeignDeviceTable) BVLCFunctionType() BVLCFunctionType {
+	return FunctionReadForeignDeviceTable
+}
+
+func (r *ReadForeignDeviceTable) Valid() bool {
+	return r.header.Valid()
+}
+
+func (r *ReadForeignDeviceTable) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-read-foreign-device-table")
+	}
+
+	return r.header.Encode()
+}
+
+func (r *ReadForeignDeviceTable) Decode(data []byte) error {
+	if r == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	res := ReadForeignDeviceTable{
+		header: BVLCHeader{},
+	}
+
+	err := res.header.Decode(data[:])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-foreign-device-table: %w", err)
+	}
+
+	*r = res
+
+	return nil
+}
