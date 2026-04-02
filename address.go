@@ -9,7 +9,7 @@ type Address struct {
 // NewAddress constructs an address and defensively copies the MAC bytes.
 func NewAddress(network NetworkNumber, mac []byte) (Address, error) {
 	if len(mac) > 255 {
-		return Address{}, &ValidationError{Field: "mac", Value: len(mac), Err: ErrInvalidMACAddress}
+		return Address{}, NewValidationError("mac", len(mac), ErrInvalidMACAddress)
 	}
 
 	cloned := make([]byte, len(mac))
@@ -32,4 +32,3 @@ func (a Address) MACBytes() []byte {
 	copy(cloned, a.MAC)
 	return cloned
 }
-

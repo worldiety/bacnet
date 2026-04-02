@@ -21,7 +21,7 @@ type DeviceInstance uint32
 // NewDeviceInstance constructs a validated BACnet device instance.
 func NewDeviceInstance(instance uint32) (DeviceInstance, error) {
 	if instance > MaxInstanceNumber {
-		return 0, &ValidationError{Field: "device instance", Value: instance, Err: ErrInvalidDeviceInstance}
+		return 0, NewValidationError("device instance", instance, ErrInvalidDeviceInstance)
 	}
 	return DeviceInstance(instance), nil
 }
@@ -91,10 +91,10 @@ type ObjectIdentifier uint32
 // NewObjectIdentifier constructs a validated BACnet object identifier.
 func NewObjectIdentifier(objectType ObjectType, instance uint32) (ObjectIdentifier, error) {
 	if !objectType.Valid() {
-		return 0, &ValidationError{Field: "object type", Value: objectType, Err: ErrInvalidObjectType}
+		return 0, NewValidationError("object type", objectType, ErrInvalidObjectType)
 	}
 	if instance > MaxInstanceNumber {
-		return 0, &ValidationError{Field: "object instance", Value: instance, Err: ErrInvalidObjectInstance}
+		return 0, NewValidationError("object instance", instance, ErrInvalidObjectInstance)
 	}
 
 	return ObjectIdentifier((uint32(objectType) << 22) | instance), nil

@@ -36,10 +36,10 @@ func (s SegmentationSupport) String() string {
 
 // ASEConfig controls runtime behavior for transaction tracking and dispatch.
 type ASEConfig struct {
-	InvokeTimeout         time.Duration
-	MaxConcurrentInvokes  int
-	Segmentation          SegmentationSupport
-	MaxAPDUSizeAccepted   uint16
+	InvokeTimeout        time.Duration
+	MaxConcurrentInvokes int
+	Segmentation         SegmentationSupport
+	MaxAPDUSizeAccepted  uint16
 }
 
 // Codec translates raw APDU bytes into normalized envelope structs.
@@ -91,10 +91,10 @@ func NewASE(cfg ASEConfig, codec Codec, transport Transport) (*ASE, error) {
 		return nil, ErrNilTransport
 	}
 	if cfg.InvokeTimeout <= 0 {
-		return nil, &bacnet.ValidationError{Field: "invoke timeout", Value: cfg.InvokeTimeout, Err: ErrInvalidASEConfig}
+		return nil, bacnet.NewValidationError("invoke timeout", cfg.InvokeTimeout, ErrInvalidASEConfig)
 	}
 	if cfg.MaxConcurrentInvokes <= 0 {
-		return nil, &bacnet.ValidationError{Field: "max concurrent invokes", Value: cfg.MaxConcurrentInvokes, Err: ErrInvalidASEConfig}
+		return nil, bacnet.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
 	}
 
 	return &ASE{
@@ -127,7 +127,7 @@ func (a *ASE) Close() {
 // RegisterConfirmed registers a confirmed request handler for a service choice.
 func (a *ASE) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error {
 	if handler == nil {
-		return &bacnet.ValidationError{Field: "handler", Value: nil, Err: ErrHandlerNotFound}
+		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	a.mu.Lock()
@@ -143,7 +143,7 @@ func (a *ASE) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) 
 // RegisterUnconfirmed registers an unconfirmed request handler for a service choice.
 func (a *ASE) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error {
 	if handler == nil {
-		return &bacnet.ValidationError{Field: "handler", Value: nil, Err: ErrHandlerNotFound}
+		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	a.mu.Lock()
@@ -229,7 +229,7 @@ func (a *ASE) OnInbound(ctx context.Context, src bacnet.Address, raw []byte) err
 	case PDUTypeSimpleACK, PDUTypeComplexACK, PDUTypeError, PDUTypeReject, PDUTypeAbort:
 		return a.completeTransaction(decoded)
 	default:
-		return &bacnet.ValidationError{Field: "pdu type", Value: decoded.Type, Err: ErrInvalidPDUType}
+		return bacnet.NewValidationError("pdu type", decoded.Type, ErrInvalidPDUType)
 	}
 }
 
@@ -338,10 +338,9 @@ func (a *ASE) completeTransaction(in InboundAPDU) error {
 	case PDUTypeAbort:
 		result.err = ErrRemoteAbort
 	default:
-		result.err = &bacnet.ValidationError{Field: "pdu type", Value: in.Type, Err: ErrInvalidPDUType}
+		result.err = bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
 	}
 
 	tx.done <- result
 	return nil
 }
-

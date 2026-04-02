@@ -23,7 +23,15 @@ var (
 type ValidationError struct {
 	Field string
 	Value any
-	Err   error
+	Cause error
+}
+
+func NewValidationError(field string, value any, cause error) *ValidationError {
+	return &ValidationError{
+		Field: field,
+		Value: value,
+		Cause: cause,
+	}
 }
 
 func (e *ValidationError) Error() string {
@@ -32,10 +40,10 @@ func (e *ValidationError) Error() string {
 	}
 
 	if e.Field == "" {
-		return fmt.Sprintf("validation failed: %v", e.Err)
+		return fmt.Sprintf("validation failed: %v", e.Cause)
 	}
 
-	return fmt.Sprintf("invalid %s (%v): %v", e.Field, e.Value, e.Err)
+	return fmt.Sprintf("invalid %s (%v): %v", e.Field, e.Value, e.Cause)
 }
 
 // Unwrap returns the underlying sentinel error.
@@ -43,6 +51,5 @@ func (e *ValidationError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
-	return e.Err
+	return e.Cause
 }
-

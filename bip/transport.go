@@ -43,7 +43,7 @@ func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 
 func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if !addr.IsValid() {
-		return "", &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+		return "", bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return "udp4", nil
@@ -51,12 +51,12 @@ func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if addr.Is6() {
 		return "udp6", nil
 	}
-	return "", &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+	return "", bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 }
 
 func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if !addr.IsValid() {
-		return 0, &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+		return 0, bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return BVLCTypeBACnetIP, nil
@@ -64,7 +64,7 @@ func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if addr.Is6() {
 		return BVLCTypeBACnetIP6, nil
 	}
-	return 0, &bacnet.ValidationError{Field: "ip address", Value: addr, Err: ErrInvalidIPAddress}
+	return 0, bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 }
 
 // Transport sends and receives BVLC frames via UDP-like datagrams.
@@ -83,7 +83,7 @@ func NewTransport(conn DatagramConn, maxDatagramSize int) (*Transport, error) {
 		return nil, ErrNilDatagramConn
 	}
 	if maxDatagramSize < BVLCHeaderLen {
-		return nil, &bacnet.ValidationError{Field: "max datagram size", Value: maxDatagramSize, Err: ErrInvalidLength}
+		return nil, bacnet.NewValidationError("max datagram size", maxDatagramSize, ErrInvalidLength)
 	}
 
 	return &Transport{conn: conn, maxDatagramSize: maxDatagramSize}, nil
@@ -113,7 +113,7 @@ func (t *Transport) SendFrame(addr netip.AddrPort, frame Frame) error {
 		return err
 	}
 	if len(raw) > t.maxDatagramSize {
-		return &bacnet.ValidationError{Field: "datagram length", Value: len(raw), Err: ErrDatagramTooLarge}
+		return bacnet.NewValidationError("datagram length", len(raw), ErrDatagramTooLarge)
 	}
 
 	if _, err := t.conn.WriteToUDPAddrPort(raw, addr); err != nil {

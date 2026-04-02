@@ -9,7 +9,7 @@ The Go module path is `go.wdy.de/bacnet`.
 | Path | Status | Purpose |
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
-| `bip/` | active | BACnet/IP BVLC frame encode/decode + UDP datagram transport scaffold |
+| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold |
 | `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
 | `encoding/` | planned | BACnet tag/value encoding |
 | `npdu/` | planned | BACnet network layer |
@@ -26,6 +26,7 @@ The Go module path is `go.wdy.de/bacnet`.
 
 ## Dependency requirements
 - Do not use dependencies unless absolutely necessary. If you need to use a dependency, make sure it is well-maintained and has a good reputation. Double check with the user whether using a dependency is okay.
+- The current baseline is standard-library-only (`go.mod` has no external module requirements); preserve that unless a reviewed exception is explicitly approved.
 
 ## Development requirements
 - The project must be developed using best practices for Go development, including proper error handling.
@@ -34,16 +35,17 @@ The Go module path is `go.wdy.de/bacnet`.
 - The packages define interface types for functionality like network (e.g. `DatagramConn` in `bip/transport.go`) to allow users to implement their own mocks for testing. 
   - The project should include tests that use these interfaces with in-memory implementations (e.g. `bip/transport_test.go`) to verify behavior without external dependencies.
 - The `apdu` package follows the same interface-first pattern (`Codec`, `Transport` in `apdu/ase.go`); tests use in-memory implementations in `apdu/ase_test.go` to verify dispatch and confirmed invoke lifecycle behavior.
+- In `bip`, prefer address-family helpers at integration boundaries: use `NewFrameForAddress` / `NewFrameWithType` in `bip/frame.go` and `NewDatagramConn` in `bip/transport.go` so IPv4 (`0x81`/`udp4`) and IPv6 (`0x82`/`udp6`) behavior stays consistent.
 - The example directory is ignored for development until the project has a stable API (and this line is removed)
 - Run tests: `go test ./...`; generate coverage: `go test -coverprofile=coverage.out ./...`
 
 ### Coding conventions
 - **Constructor pattern**: exported constructor functions are named `NewX(args) (T, error)` and validate all inputs before returning (e.g. `NewObjectIdentifier`, `NewDeviceInstance`, `NewAddress`).
-- **Validation errors**: always return a pointer: `return 0, &ValidationError{Field: "...", Value: ..., Err: ErrXxx}` (see `errors.go`). The `Error()` and `Unwrap()` methods are on `*ValidationError`; returning a value copy breaks `errors.Is()`. Sentinel errors are package-level `var` declared with `errors.New()`.
+- **Validation errors**: use the NewValidationError function to construct the error
 - **`String()` methods**: use the BACnet specification's hyphen-separated names (e.g. `"analog-input"`, `"object-identifier"`, `"present-value"`). Unknown values fall back to `"type-name(N)"` (e.g. `"object-type(2048)"`). Composite types use comma-separated `"type,instance"` format (e.g. `ObjectIdentifier.String()` returns `"device,1234"`).
 - **Defensive copies**: slice-backed fields must be copied on both construction and access (see `NewAddress` and `Address.MACBytes()`).
 - **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`).
-- **`PropertyIdentifier`**: fully implemented in `types.go` with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` method. Follow the same pattern when adding new property identifiers.
+- **`PropertyIdentifier`**: implemented in `types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
 - **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
 
 ### Test conventions
@@ -63,4 +65,4 @@ The Go module path is `go.wdy.de/bacnet`.
 - The project uses Git for version control, and all releases must be tagged with the appropriate version number in the Git repository.
 - The project uses commitizen for consistent commit messages, following the format `type(scope): description` (e.g. `feat(address): add NewAddress constructor`).
 - All commits must be made with the appropriate type (e.g. `feat`, `fix`, `docs`, `refactor`, etc.) and scope (e.g. `address`, `types`, `errors`, etc.) to ensure clear commit history and accurate changelog generation.
-- Commit/version automation is configured in `.cz.yaml` (`name: cz_conventional_commits`, `version_scheme: semver`, `major_version_zero: true`, `tag_format: $version`); keep `Agents.md` guidance aligned with that file when release workflow changes.
+- Commit/version automation is configured in `.cz.yaml` (`name: cz_conventional_commits`, `version_scheme: semver`, `major_version_zero: true`, `tag_format: $version`, `update_changelog_on_bump: true`); keep `AGENTS.md` guidance aligned with that file when release workflow changes.
