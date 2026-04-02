@@ -509,6 +509,66 @@ func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
 	return nil
 }
 
+type ForwardedNpdu struct {
+	header                          BVLCHeader
+	addressOfOriginatingDevice      netip.AddrPort
+	bacNetNpduFromOriginatingDevice []byte
+}
+
+func (f *ForwardedNpdu) BVLCFunctionType() BVLCFunctionType {
+	return FunctionForwardedNPDU
+}
+
+func (f *ForwardedNpdu) Valid() bool {
+	if f == nil {
+		return false
+	}
+
+	return f.header.Valid() && f.addressOfOriginatingDevice.IsValid() && len(f.bacNetNpduFromOriginatingDevice) > 0
+	//todo check if npdu has some proper definition somewhere in the standard, for now "there is data there" is enough though
+}
+
+func (f *ForwardedNpdu) Encode() ([]byte, error) {
+	if f == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-forwarded-npdu")
+	}
+
+	headerBytes, err := f.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-forwarded-npdu: %w", err)
+	}
+
+	addressBytes := encodeAddressPortIpV4(f.addressOfOriginatingDevice)
+
+	return append(headerBytes, append(addressBytes, f.bacNetNpduFromOriginatingDevice...)...), nil
+}
+
+func (f *ForwardedNpdu) Decode(data []byte) error {
+	if len(data) < BVLCHeaderLen+6 { // cannot contain header and address
+		return fmt.Errorf("invalid length for bvlc-forwarded-npdu")
+	}
+
+	res := ForwardedNpdu{
+		header:                          BVLCHeader{},
+		addressOfOriginatingDevice:      netip.AddrPort{},
+		bacNetNpduFromOriginatingDevice: make([]byte, 0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-forwarded-npdu: %w", err)
+	}
+
+	res.addressOfOriginatingDevice, err = decodeAddressPortIpV4(data[BVLCHeaderLen : BVLCHeaderLen+6])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-forwarded-npdu address: %w", err)
+	}
+
+	res.bacNetNpduFromOriginatingDevice = cloneBytes(data[BVLCHeaderLen+6:])
+
+	return nil
+}
+
 func encodeAddressPortIpV4(address netip.AddrPort) []byte {
 	out := make([]byte, 0, 6)
 
