@@ -201,16 +201,69 @@ func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) *
 	}
 }
 
-type WriteBroadCastDistributionTable struct {
-	header     BVLCHeader
-	bdtEntries []BdtEntry
+type BdtEntryList []BdtEntry
+
+func (l *BdtEntryList) Decode(data []byte) error {
+	entries := make([]BdtEntry, 0)
+	for i := 0; i < len(data); i += BdtEntryDataLen {
+		entryBytes := data[i : i+BdtEntryDataLen]
+		var entry BdtEntry
+		err := entry.Decode(entryBytes)
+		if err != nil {
+			return fmt.Errorf("could not decode entry %d: %w", i, err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	*l = entries
+
+	return nil
 }
 
-func (w *WriteBroadCastDistributionTable) BVLCFunctionType() BVLCFunctionType {
+func (l *BdtEntryList) Encode() ([]byte, error) {
+	if l == nil {
+		return nil, fmt.Errorf("cannot encode nil list")
+	}
+
+	out := make([]byte, 0)
+
+	for i, entry := range *l {
+		entryBytes, err := entry.Encode()
+		if err != nil {
+			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
+		}
+
+		out = append(out, entryBytes...)
+	}
+
+	return out, nil
+}
+
+func (l *BdtEntryList) Valid() bool {
+	if l == nil {
+		return false
+	}
+
+	for _, entry := range *l {
+		if !entry.Valid() {
+			return false
+		}
+	}
+
+	return true
+}
+
+type WriteBroadcastDistributionTable struct {
+	header     BVLCHeader
+	bdtEntries BdtEntryList
+}
+
+func (w *WriteBroadcastDistributionTable) BVLCFunctionType() BVLCFunctionType {
 	return FunctionWriteBroadcastDistributionTable
 }
 
-func (w *WriteBroadCastDistributionTable) Valid() bool {
+func (w *WriteBroadcastDistributionTable) Valid() bool {
 	if w == nil {
 		return false
 	}
@@ -224,7 +277,7 @@ func (w *WriteBroadCastDistributionTable) Valid() bool {
 	return w.header.Valid() && entriesValid
 }
 
-func (w *WriteBroadCastDistributionTable) Encode() ([]byte, error) {
+func (w *WriteBroadcastDistributionTable) Encode() ([]byte, error) {
 	if w == nil {
 		return nil, fmt.Errorf("cannot encode nil bvlc-write-broadcast-distribution-table")
 	}
@@ -246,37 +299,26 @@ func (w *WriteBroadCastDistributionTable) Encode() ([]byte, error) {
 	return out, nil
 }
 
-func (w *WriteBroadCastDistributionTable) Decode(data []byte) error {
+func (w *WriteBroadcastDistributionTable) Decode(data []byte) error {
 	if len(data) < BVLCHeaderLen+BdtEntryDataLen { // cannot contain less than one entry
 		return fmt.Errorf("invalid length for bvlc-write-broadcast-distribution-table")
 	}
 
-	var header BVLCHeader
-	headerBytes := data[:BVLCHeaderLen]
-	err := header.Decode(headerBytes)
+	res := WriteBroadcastDistributionTable{
+		header:     BVLCHeader{},
+		bdtEntries: make(BdtEntryList, 0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-write-broadcast-distribution-table header: %w", err)
 	}
 
-	entries := make([]BdtEntry, 0)
-
-	entriesBytes := data[BVLCHeaderLen:]
-
-	for i := 0; i < len(entriesBytes); i += BdtEntryDataLen {
-		entryBytes := entriesBytes[i : i+BdtEntryDataLen]
-		var entry BdtEntry
-		err = entry.Decode(entryBytes)
-		if err != nil {
-			return fmt.Errorf("decode bvlc-write-broadcast-distribution-table entry %d: %w", i, err)
-		}
-
-		entries = append(entries, entry)
+	err = res.bdtEntries.Decode(data[BVLCHeaderLen:])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-write-broadcast-distribution-table %w", err)
 	}
 
-	res := WriteBroadCastDistributionTable{
-		header:     header,
-		bdtEntries: entries,
-	}
 	if !res.Valid() {
 		return fmt.Errorf("decoded invalid bvlc-write-broadcast-distribution-table")
 	}
@@ -335,5 +377,143 @@ func (r *ReadBroadCastDistributionTable) Decode(data []byte) error {
 
 	*r = res
 
+	return nil
+}
+
+type ReadBroadcastDistributionTable struct {
+	header  BVLCHeader
+	entries BdtEntryList
+}
+
+func (r *ReadBroadcastDistributionTable) BVLCFunctionType() BVLCFunctionType {
+	return FunctionReadBroadcastDistributionTable
+}
+
+func (r *ReadBroadcastDistributionTable) Valid() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.header.Valid() && r.entries.Valid()
+}
+
+func (r *ReadBroadcastDistributionTable) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table")
+	}
+
+	headerBytes, err := r.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table: %w", err)
+	}
+
+	entryListBytes, err := r.entries.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table: %w", err)
+	}
+
+	return append(headerBytes, entryListBytes...), nil
+}
+
+func (r *ReadBroadcastDistributionTable) Decode(data []byte) error {
+	if len(data) < BVLCHeaderLen { // cannot contain header
+		return fmt.Errorf("invalid length for bvlc-read-broadcast-distribution-table")
+	}
+
+	res := ReadBroadcastDistributionTable{
+		header:  BVLCHeader{},
+		entries: make([]BdtEntry, 0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table header: %w", err)
+	}
+
+	if len(data) > BVLCHeaderLen { // does not contain any entries, this is valid
+		err = res.entries.Decode(data[BVLCHeaderLen:])
+		if err != nil {
+			return fmt.Errorf("decode bvlc-read-broadcast-distribution-table %w", err)
+		}
+	}
+
+	*r = res
+
+	return nil
+}
+
+func NewReadBroadcastDistributionTable(entries []BdtEntry) *ReadBroadcastDistributionTable {
+	if entries == nil {
+		entries = make([]BdtEntry, 0)
+	}
+
+	return &ReadBroadcastDistributionTable{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionReadBroadcastDistributionTable,
+			BVLCLength:       BVLCLength(len(entries) * BdtEntryDataLen),
+		},
+		entries: entries,
+	}
+}
+
+type ReadBroadcastDistributionTableAck struct {
+	header  BVLCHeader
+	entries BdtEntryList
+}
+
+func (r *ReadBroadcastDistributionTableAck) BVLCFunctionType() BVLCFunctionType {
+	return FunctionReadBroadcastDistributionTableAck
+}
+
+func (r *ReadBroadcastDistributionTableAck) Valid() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.header.Valid() && r.entries.Valid()
+}
+
+func (r *ReadBroadcastDistributionTableAck) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table-ack")
+	}
+
+	headerBytes, err := r.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table-ack: %w", err)
+	}
+
+	entryListBytes, err := r.entries.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table-ack: %w", err)
+	}
+
+	return append(headerBytes, entryListBytes...), nil
+}
+
+func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
+	res := ReadBroadcastDistributionTableAck{
+		header:  BVLCHeader{},
+		entries: make([]BdtEntry, 0),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table-ack: %w", err)
+	}
+
+	if len(data) > BVLCHeaderLen {
+		err = res.entries.Decode(data[BVLCHeaderLen:])
+		if err != nil {
+			return fmt.Errorf("decode bvlc-read-broadcast-distribution-table %w", err)
+		}
+	}
+
+	if !res.Valid() {
+		return fmt.Errorf("decoded invalid bvlc-read-broadcast-distribution-table-ack")
+	}
+
+	*r = res
 	return nil
 }

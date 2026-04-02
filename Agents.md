@@ -55,7 +55,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - Use `errors.Is(err, ErrXxx)` for all error assertions — never compare error strings directly.
 
 ## BACnet standard requirements
-- The project must implement the BACnet standard as defined in the official BACnet documentation.
+- The project must implement the BACnet standard as defined in ANSI/ASHRAE 135-2024.
 
 ## Versioning
 - The project must follow semantic versioning (semver) for all releases. This means that version numbers should be in the format `MAJOR.MINOR.PATCH`, where:
