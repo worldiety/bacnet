@@ -147,6 +147,10 @@ const (
 func (b *BdtEntry) Encode() ([]byte, error) {
 	out := make([]byte, BdtEntryDataLen)
 
+	if !b.address.Addr().Is4() { //bd entries require ipv4, should be guaranteed by constructor, check here anyway
+		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
+	}
+
 	copy(out[0:4], b.address.Addr().AsSlice())
 	out[5] = uint8(b.address.Port() >> 8)
 	out[6] = uint8(b.address.Port() & 0xFF)
@@ -278,6 +282,58 @@ func (w *WriteBroadCastDistributionTable) Decode(data []byte) error {
 	}
 
 	*w = res
+
+	return nil
+}
+
+type ReadBroadCastDistributionTable struct {
+	header BVLCHeader
+}
+
+func NewReadBroadCastDistributionTable(length uint16) *ReadBroadCastDistributionTable {
+	return &ReadBroadCastDistributionTable{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionReadBroadcastDistributionTable,
+			BVLCLength:       BVLCLength(length),
+		},
+	}
+}
+
+func (r *ReadBroadCastDistributionTable) BVLCFunctionType() BVLCFunctionType {
+	return FunctionReadBroadcastDistributionTable
+}
+
+func (r *ReadBroadCastDistributionTable) Valid() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.header.Valid()
+}
+
+func (r *ReadBroadCastDistributionTable) Encode() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table")
+	}
+
+	out, err := r.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table: %w", err)
+	}
+
+	return out, nil
+}
+
+func (r *ReadBroadCastDistributionTable) Decode(data []byte) error {
+	res := ReadBroadCastDistributionTable{}
+
+	err := res.header.Decode(data)
+	if err != nil {
+		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table: %w", err)
+	}
+
+	*r = res
 
 	return nil
 }
