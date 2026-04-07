@@ -121,46 +121,53 @@ func (r *BVLCResult) Decode(data []byte) error {
 	return nil
 }
 
-type BdtEntry struct {
+type FdtEntry tableEntry
+
+func (f *FdtEntry) Valid() bool {
+	return tableEntryValid[FdtEntry](f)
+}
+
+func (f *FdtEntry) Encode() ([]byte, error) {
+	if f == nil {
+		return nil, fmt.Errorf("nil bvlc-entry")
+	}
+	return encodeTableEntry[FdtEntry](f)
+}
+
+func (f *FdtEntry) Decode(data []byte) error {
+	return decodeTableEntry[FdtEntry](data, f)
+}
+
+type BdtEntry tableEntry
+
+func (b *BdtEntry) Valid() bool {
+	return tableEntryValid[BdtEntry](b)
+}
+
+func (b *BdtEntry) Encode() ([]byte, error) {
+	return encodeTableEntry[BdtEntry](b)
+}
+
+func (b *BdtEntry) Decode(data []byte) error {
+	return decodeTableEntry[BdtEntry](data, b)
+}
+
+type tableEntry struct {
 	// the IP address of the gateway if NAT is active, of the target otherwise
 	address netip.AddrPort
 	// the subnet mask if NAT is active, 255.255.255.255 otherwise
 	broadcastDistributionMask net.IPMask
 }
 
-func (b *BdtEntry) Valid() bool {
-	if b == nil {
-		return false
-	}
-
-	addressValid := b.address.Addr().Is4() && b.address.IsValid()
-
-	maskValid := b.broadcastDistributionMask[3] >= b.broadcastDistributionMask[2] &&
-		b.broadcastDistributionMask[2] >= b.broadcastDistributionMask[1] &&
-		b.broadcastDistributionMask[1] >= b.broadcastDistributionMask[0]
-
-	return addressValid && maskValid
+type tableEntryKinds interface {
+	BdtEntry | FdtEntry
 }
 
-const (
-	BdtEntryDataLen = 10
-)
-
-func (b *BdtEntry) Encode() ([]byte, error) {
-	out := make([]byte, BdtEntryDataLen)
-
-	if !b.address.Addr().Is4() { //bd entries require ipv4, should be guaranteed by constructor, check here anyway
-		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
+func decodeTableEntry[T tableEntryKinds](data []byte, target *T) error {
+	if target == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
 	}
 
-	copy(out[0:6], encodeAddressPortIpV4(b.address))
-
-	copy(out[7:9], b.broadcastDistributionMask)
-
-	return out, nil
-}
-
-func (b *BdtEntry) Decode(data []byte) error {
 	if len(data) != BdtEntryDataLen {
 		return fmt.Errorf("invalid length for bdt entry: %d", len(data))
 	}
@@ -172,19 +179,61 @@ func (b *BdtEntry) Decode(data []byte) error {
 
 	mask := net.IPv4Mask(data[6], data[7], data[8], data[9])
 
-	entry := BdtEntry{
+	entry := T(tableEntry{
 		address:                   address,
 		broadcastDistributionMask: mask,
-	}
+	})
 
-	if !entry.Valid() {
+	if !tableEntryValid[T](&entry) {
 		return fmt.Errorf("invalid bdt entry mask") // ip and port are valid, invalidity must be caused by mask
 	}
 
-	*b = entry
+	*target = entry
 
 	return nil
 }
+
+func encodeTableEntry[T tableEntryKinds](entry *T) ([]byte, error) {
+	if entry == nil {
+		return nil, fmt.Errorf("cannot encode nil pointer")
+	}
+
+	out := make([]byte, BdtEntryDataLen)
+
+	tEntry := tableEntry(*entry)
+
+	if !tEntry.address.Addr().Is4() { //bd entries require ipv4, should be guaranteed by constructor, check here anyway
+		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
+	}
+
+	copy(out[0:6], encodeAddressPortIpV4(tEntry.address))
+
+	copy(out[7:9], tEntry.broadcastDistributionMask)
+
+	return out, nil
+}
+
+func tableEntryValid[T tableEntryKinds](entry *T) bool {
+	if entry == nil {
+		return false
+	}
+
+	b := tableEntry(*entry)
+
+	addressValid := b.address.Addr().Is4() && b.address.IsValid()
+
+	maskValid := b.broadcastDistributionMask[3] >= b.broadcastDistributionMask[2] &&
+		b.broadcastDistributionMask[2] >= b.broadcastDistributionMask[1] &&
+		b.broadcastDistributionMask[1] >= b.broadcastDistributionMask[0]
+
+	return addressValid && maskValid
+}
+
+const (
+	entryDataLen    = 10
+	BdtEntryDataLen = entryDataLen
+	FdtEntryDataLen = entryDataLen
+)
 
 func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) *BdtEntry {
 	return &BdtEntry{
@@ -193,14 +242,14 @@ func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) *
 	}
 }
 
-type BdtEntryList []BdtEntry
+type entryList[T tableEntryKinds] []T
 
-func (l *BdtEntryList) Decode(data []byte) error {
-	entries := make([]BdtEntry, 0)
+func (l *entryList[T]) Decode(data []byte) error {
+	entries := make([]T, 0)
 	for i := 0; i < len(data); i += BdtEntryDataLen {
 		entryBytes := data[i : i+BdtEntryDataLen]
-		var entry BdtEntry
-		err := entry.Decode(entryBytes)
+		var entry T
+		err := decodeTableEntry(entryBytes, &entry)
 		if err != nil {
 			return fmt.Errorf("could not decode entry %d: %w", i, err)
 		}
@@ -213,7 +262,7 @@ func (l *BdtEntryList) Decode(data []byte) error {
 	return nil
 }
 
-func (l *BdtEntryList) Encode() ([]byte, error) {
+func (l *entryList[T]) Encode() ([]byte, error) {
 	if l == nil {
 		return nil, fmt.Errorf("cannot encode nil list")
 	}
@@ -221,7 +270,7 @@ func (l *BdtEntryList) Encode() ([]byte, error) {
 	out := make([]byte, 0)
 
 	for i, entry := range *l {
-		entryBytes, err := entry.Encode()
+		entryBytes, err := encodeTableEntry(&entry)
 		if err != nil {
 			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
 		}
@@ -232,13 +281,13 @@ func (l *BdtEntryList) Encode() ([]byte, error) {
 	return out, nil
 }
 
-func (l *BdtEntryList) Valid() bool {
+func (l *entryList[T]) Valid() bool {
 	if l == nil {
 		return false
 	}
 
 	for _, entry := range *l {
-		if !entry.Valid() {
+		if !tableEntryValid[T](&entry) {
 			return false
 		}
 	}
