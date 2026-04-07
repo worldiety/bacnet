@@ -295,6 +295,115 @@ func (l *entryList[T]) Valid() bool {
 	return true
 }
 
+type BdtEntryList []BdtEntry
+
+func (l *BdtEntryList) Decode(data []byte) error {
+	entries := make([]BdtEntry, 0)
+	for i := 0; i < len(data); i += BdtEntryDataLen {
+		entryBytes := data[i : i+BdtEntryDataLen]
+		var entry BdtEntry
+		err := decodeTableEntry(entryBytes, &entry)
+		if err != nil {
+			return fmt.Errorf("could not decode entry %d: %w", i, err)
+		}
+	}
+
+	*l = entries
+
+	return nil
+}
+
+func (l *BdtEntryList) Encode() ([]byte, error) {
+	if l == nil {
+		return nil, fmt.Errorf("cannot encode nil list")
+	}
+
+	out := make([]byte, 0)
+
+	for i, entry := range *l {
+		entryBytes, err := encodeTableEntry(&entry)
+		if err != nil {
+			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
+		}
+
+		out = append(out, entryBytes...)
+	}
+
+	return out, nil
+}
+
+func (l *BdtEntryList) Valid() bool {
+	if l == nil {
+		return false
+	}
+
+	valid := true
+
+	for _, entry := range *l {
+		valid = entry.Valid() && valid
+	}
+
+	return valid
+}
+
+type FdtEntryList []FdtEntry
+
+func (l *FdtEntryList) Decode(data []byte) error {
+	if l == nil {
+		return fmt.Errorf("cannot decode into nil list")
+	}
+
+	entries := make([]FdtEntry, 0)
+
+	for i := 0; i < len(data); i += FdtEntryDataLen {
+		entryBytes := data[i : i+FdtEntryDataLen]
+		var entry FdtEntry
+		err := decodeTableEntry(entryBytes, &entry)
+		if err != nil {
+			return fmt.Errorf("could not decode entry %d: %w", i, err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	*l = entries
+
+	return nil
+}
+
+func (l *FdtEntryList) Encode() ([]byte, error) {
+	if l == nil {
+		return nil, fmt.Errorf("cannot encode nil list")
+	}
+
+	out := make([]byte, 0)
+
+	for i, entry := range *l {
+		entryBytes, err := encodeTableEntry(&entry)
+		if err != nil {
+			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
+		}
+
+		out = append(out, entryBytes...)
+	}
+
+	return out, nil
+}
+
+func (l *FdtEntryList) Valid() bool {
+	if l == nil {
+		return false
+	}
+
+	valid := true
+
+	for _, entry := range *l {
+		valid = entry.Valid() && valid
+	}
+
+	return valid
+}
+
 type WriteBroadcastDistributionTable struct {
 	header     BVLCHeader
 	bdtEntries BdtEntryList
@@ -744,7 +853,7 @@ func (r *ReadForeignDeviceTable) Decode(data []byte) error {
 
 type ReadForeignDeviceTableAck struct {
 	header  BVLCHeader
-	entries BdtEntryList
+	entries FdtEntryList
 }
 
 func (r *ReadForeignDeviceTableAck) BVLCFunctionType() BVLCFunctionType {
@@ -784,7 +893,7 @@ func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
 
 	res := ReadForeignDeviceTableAck{
 		header:  BVLCHeader{},
-		entries: make(BdtEntryList, 0),
+		entries: make(FdtEntryList, 0),
 	}
 
 	err := res.header.Decode(data[:BVLCHeaderLen])
@@ -798,6 +907,70 @@ func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
 	}
 
 	*r = res
+
+	return nil
+}
+
+type DeleteForeignDeviceTableEntry struct {
+	header BVLCHeader
+	entry  BdtEntry
+}
+
+func (d *DeleteForeignDeviceTableEntry) BVLCFunctionType() BVLCFunctionType {
+	return FunctionDeleteForeignDeviceTableEntry
+}
+
+func (d *DeleteForeignDeviceTableEntry) Valid() bool {
+	return d.header.Valid() && d.entry.Valid()
+}
+
+func (d *DeleteForeignDeviceTableEntry) Encode() ([]byte, error) {
+	if d == nil {
+		return nil, fmt.Errorf("cannot encode nil delete-foreign-device-table-entry")
+	}
+
+	headerBytes, err := d.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode delete-foreign-device-table-entry: %w", err)
+	}
+
+	entryBytes, err := d.entry.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode delete-foreign-device-table-entry: %w", err)
+	}
+
+	return append(headerBytes, entryBytes...), nil
+}
+
+func (d *DeleteForeignDeviceTableEntry) Decode(data []byte) error {
+	if d == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	if len(data) != BVLCHeaderLen+BdtEntryDataLen {
+		return fmt.Errorf("invalid length for delete-foreign-device-table-entry")
+	}
+
+	res := DeleteForeignDeviceTableEntry{
+		header: BVLCHeader{},
+		entry:  BdtEntry{},
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode delete-foreign-device-table-entry header: %w", err)
+	}
+
+	err = res.entry.Decode(data[BVLCHeaderLen:])
+	if err != nil {
+		return fmt.Errorf("decode delete-foreign-device-table-entry entry: %w", err)
+	}
+
+	if !res.Valid() {
+		return fmt.Errorf("decoded delete-foreign-device-table-entry invalid")
+	}
+
+	*d = res
 
 	return nil
 }
