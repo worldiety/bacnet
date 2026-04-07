@@ -28,13 +28,16 @@ func (h *BVLCHeader) Encode() ([]byte, error) {
 	if h == nil {
 		return nil, fmt.Errorf("nil bvlc-header")
 	}
+
 	if !h.BVLCType.Valid() {
 		return nil, ErrInvalidBVLCType
 	}
+
 	if !h.BVLCFunctionType.Valid() {
 		return nil, ErrInvalidFunction
 	}
-	if h.BVLCLength <= BVLCHeaderLen {
+
+	if h.BVLCLength < BVLCHeaderLen {
 		return nil, ErrInvalidLength
 	}
 

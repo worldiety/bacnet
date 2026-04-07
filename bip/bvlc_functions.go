@@ -974,3 +974,287 @@ func (d *DeleteForeignDeviceTableEntry) Decode(data []byte) error {
 
 	return nil
 }
+
+// BdtEntry returns a copy of the FDT entry to be deleted.
+func (d *DeleteForeignDeviceTableEntry) BdtEntry() BdtEntry {
+	return d.entry
+}
+
+// NewDeleteForeignDeviceTableEntry constructs a validated DeleteForeignDeviceTableEntry
+// for BACnet/IP (IPv4). entry must be valid.
+func NewDeleteForeignDeviceTableEntry(entry BdtEntry) (*DeleteForeignDeviceTableEntry, error) {
+	if !entry.Valid() {
+		return nil, bacnet.NewValidationError("entry", entry, ErrInvalidIPAddress)
+	}
+	const frameLen = BVLCHeaderLen + BdtEntryDataLen
+	return &DeleteForeignDeviceTableEntry{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionDeleteForeignDeviceTableEntry,
+			BVLCLength:       BVLCLength(frameLen),
+		},
+		entry: entry,
+	}, nil
+}
+
+type DistributeBroadcastToNetwork struct {
+	header                          BVLCHeader
+	bacnetNpduFromOriginatingDevice []byte
+}
+
+func (d *DistributeBroadcastToNetwork) BVLCFunctionType() BVLCFunctionType {
+	return FunctionDistributeBroadcastToNetwork
+}
+
+func (d *DistributeBroadcastToNetwork) Valid() bool {
+	if d == nil {
+		return false
+	}
+	return d.header.Valid() && d.bacnetNpduFromOriginatingDevice != nil //TODO check npdu format
+}
+
+func (d *DistributeBroadcastToNetwork) Encode() ([]byte, error) {
+	if d == nil {
+		return nil, fmt.Errorf("cannot encode nil bvlc-distribute-broadcast-to-network")
+	}
+
+	headerBytes, err := d.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-distribute-broadcast-to-network: %w", err)
+	}
+
+	return append(headerBytes, d.bacnetNpduFromOriginatingDevice...), nil
+}
+
+func (d *DistributeBroadcastToNetwork) Decode(data []byte) error {
+	if d == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	if len(data) <= BVLCHeaderLen {
+		return fmt.Errorf("invalid length for distribute-broadcast-to-network")
+	}
+
+	res := DistributeBroadcastToNetwork{
+		header:                          BVLCHeader{},
+		bacnetNpduFromOriginatingDevice: make([]byte, 0, len(data)-BVLCHeaderLen),
+	}
+
+	err := res.header.Decode(data[:BVLCHeaderLen])
+	if err != nil {
+		return fmt.Errorf("decode bvlc-distribute-broadcast-to-network: %w", err)
+	}
+
+	copy(res.bacnetNpduFromOriginatingDevice, data[BVLCHeaderLen:])
+
+	*d = res
+
+	return nil
+}
+
+// NPDUBytes returns a defensive copy of the enclosed NPDU payload.
+func (d *DistributeBroadcastToNetwork) NPDUBytes() []byte {
+	return cloneBytes(d.bacnetNpduFromOriginatingDevice)
+}
+
+// NewDistributeBroadcastToNetwork constructs a validated DistributeBroadcastToNetwork.
+// frameType must be BVLCTypeBACnetIP (0x81) or BVLCTypeBACnetIP6 (0x82).
+// npdu must be non-empty.
+func NewDistributeBroadcastToNetwork(frameType BVLCType, npdu []byte) (*DistributeBroadcastToNetwork, error) {
+	if !frameType.Valid() {
+		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+	}
+	if len(npdu) == 0 {
+		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+	}
+	totalLen := BVLCHeaderLen + len(npdu)
+	if totalLen > 0xFFFF {
+		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+	}
+	return &DistributeBroadcastToNetwork{
+		header: BVLCHeader{
+			BVLCType:         frameType,
+			BVLCFunctionType: FunctionDistributeBroadcastToNetwork,
+			BVLCLength:       BVLCLength(totalLen),
+		},
+		bacnetNpduFromOriginatingDevice: cloneBytes(npdu),
+	}, nil
+}
+
+// OriginalUnicastNpdu is a BVLC Original-Unicast-NPDU message (Annex J, function 0x0A).
+// It carries a BACnet NPDU addressed to a single peer.
+type OriginalUnicastNpdu struct {
+	header     BVLCHeader
+	bacnetNpdu []byte
+}
+
+// NewOriginalUnicastNpdu constructs a validated OriginalUnicastNpdu.
+// frameType must be BVLCTypeBACnetIP (0x81) or BVLCTypeBACnetIP6 (0x82).
+// npdu must be non-empty.
+func NewOriginalUnicastNpdu(frameType BVLCType, npdu []byte) (*OriginalUnicastNpdu, error) {
+	if !frameType.Valid() {
+		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+	}
+	if len(npdu) == 0 {
+		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+	}
+	totalLen := BVLCHeaderLen + len(npdu)
+	if totalLen > 0xFFFF {
+		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+	}
+	l, err := NewBVLCLength(totalLen)
+	if err != nil {
+		return nil, err
+	}
+	return &OriginalUnicastNpdu{
+		header: BVLCHeader{
+			BVLCType:         frameType,
+			BVLCFunctionType: FunctionOriginalUnicastNPDU,
+			BVLCLength:       l,
+		},
+		bacnetNpdu: cloneBytes(npdu),
+	}, nil
+}
+
+// BVLCFunctionType returns FunctionOriginalUnicastNPDU.
+func (o *OriginalUnicastNpdu) BVLCFunctionType() BVLCFunctionType {
+	return FunctionOriginalUnicastNPDU
+}
+
+// Valid reports whether the struct holds a consistent, encodable state.
+func (o *OriginalUnicastNpdu) Valid() bool {
+	if o == nil {
+		return false
+	}
+	return o.header.Valid() &&
+		o.header.BVLCFunctionType == FunctionOriginalUnicastNPDU &&
+		len(o.bacnetNpdu) > 0
+}
+
+// Encode serializes the message to wire bytes (BVLC header + NPDU).
+func (o *OriginalUnicastNpdu) Encode() ([]byte, error) {
+	if o == nil {
+		return nil, fmt.Errorf("cannot encode nil original-unicast-npdu")
+	}
+	if !o.Valid() {
+		return nil, fmt.Errorf("invalid original-unicast-npdu")
+	}
+	headerBytes, err := o.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode original-unicast-npdu: %w", err)
+	}
+
+	return append(headerBytes, o.bacnetNpdu...), nil
+}
+
+// Decode parses wire bytes into the receiver.
+// data must begin with the 4-byte BVLC header followed by at least one NPDU byte.
+func (o *OriginalUnicastNpdu) Decode(data []byte) error {
+	if o == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+	if len(data) <= BVLCHeaderLen {
+		return fmt.Errorf("invalid length for original-unicast-npdu")
+	}
+	res := OriginalUnicastNpdu{}
+	if err := res.header.Decode(data[:BVLCHeaderLen]); err != nil {
+		return fmt.Errorf("decode original-unicast-npdu header: %w", err)
+	}
+	if res.header.BVLCFunctionType != FunctionOriginalUnicastNPDU {
+		return fmt.Errorf("invalid function type for original-unicast-npdu: %s", res.header.BVLCFunctionType)
+	}
+	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
+	*o = res
+	return nil
+}
+
+// NPDUBytes returns a defensive copy of the enclosed NPDU payload.
+func (o *OriginalUnicastNpdu) NPDUBytes() []byte {
+	return cloneBytes(o.bacnetNpdu)
+}
+
+// OriginalBroadcastNpdu is a BVLC Original-Broadcast-NPDU message (Annex J, function 0x0B).
+// It carries a BACnet NPDU that is to be broadcast on the local IP subnet.
+type OriginalBroadcastNpdu struct {
+	header     BVLCHeader
+	bacnetNpdu []byte
+}
+
+func NewOriginalBroadcastNpdu(frameType BVLCType, npdu []byte) (*OriginalBroadcastNpdu, error) {
+	if !frameType.Valid() {
+		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+	}
+	if len(npdu) == 0 {
+		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+	}
+	totalLen := BVLCHeaderLen + len(npdu)
+	if totalLen > 0xFFFF {
+		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+	}
+	l, err := NewBVLCLength(totalLen)
+	if err != nil {
+		return nil, err
+	}
+	return &OriginalBroadcastNpdu{
+		header: BVLCHeader{
+			BVLCType:         frameType,
+			BVLCFunctionType: FunctionOriginalBroadcastNPDU,
+			BVLCLength:       l,
+		},
+		bacnetNpdu: cloneBytes(npdu),
+	}, nil
+}
+
+func (o *OriginalBroadcastNpdu) BVLCFunctionType() BVLCFunctionType {
+	return FunctionOriginalBroadcastNPDU
+}
+
+func (o *OriginalBroadcastNpdu) Valid() bool {
+	if o == nil {
+		return false
+	}
+	return o.header.Valid() &&
+		o.header.BVLCFunctionType == FunctionOriginalBroadcastNPDU &&
+		len(o.bacnetNpdu) > 0
+}
+
+func (o *OriginalBroadcastNpdu) Encode() ([]byte, error) {
+	if o == nil {
+		return nil, fmt.Errorf("cannot encode nil original-broadcast-npdu")
+	}
+	if !o.Valid() {
+		return nil, fmt.Errorf("invalid original-broadcast-npdu")
+	}
+	out, err := o.header.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode original-broadcast-npdu: %w", err)
+	}
+	copy(out[BVLCHeaderLen:], o.bacnetNpdu)
+	return out, nil
+}
+
+// Decode parses wire bytes into the receiver.
+// data must begin with the 4-byte BVLC header followed by at least one NPDU byte.
+func (o *OriginalBroadcastNpdu) Decode(data []byte) error {
+	if o == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+	if len(data) <= BVLCHeaderLen {
+		return fmt.Errorf("invalid length for original-broadcast-npdu")
+	}
+	res := OriginalBroadcastNpdu{}
+	if err := res.header.Decode(data[:BVLCHeaderLen]); err != nil {
+		return fmt.Errorf("decode original-broadcast-npdu header: %w", err)
+	}
+	if res.header.BVLCFunctionType != FunctionOriginalBroadcastNPDU {
+		return fmt.Errorf("invalid function type for original-broadcast-npdu: %s", res.header.BVLCFunctionType)
+	}
+	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
+	*o = res
+	return nil
+}
+
+// NPDUBytes returns a defensive copy of the enclosed NPDU payload.
+func (o *OriginalBroadcastNpdu) NPDUBytes() []byte {
+	return cloneBytes(o.bacnetNpdu)
+}
