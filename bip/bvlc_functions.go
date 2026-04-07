@@ -121,6 +121,28 @@ func (r *BVLCResult) Decode(data []byte) error {
 	return nil
 }
 
+// ResultCode returns the BVLC result code carried by the frame.
+func (r *BVLCResult) ResultCode() BVLCResultCode {
+	return r.resultCode
+}
+
+// NewBVLCResult constructs a validated BVLCResult for BACnet/IP (IPv4).
+// resultCode must be one of the defined BVLCResultCode constants.
+func NewBVLCResult(resultCode BVLCResultCode) (*BVLCResult, error) {
+	if !resultCode.Valid() {
+		return nil, bacnet.NewValidationError("result code", resultCode, ErrInvalidResultCode)
+	}
+	const resultFrameLen = BVLCHeaderLen + 2
+	return &BVLCResult{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionResult,
+			BVLCLength:       BVLCLength(resultFrameLen),
+		},
+		resultCode: resultCode,
+	}, nil
+}
+
 type FdtEntry tableEntry
 
 func (f *FdtEntry) Valid() bool {
@@ -138,6 +160,40 @@ func (f *FdtEntry) Decode(data []byte) error {
 	return decodeTableEntry[FdtEntry](data, f)
 }
 
+// Address returns the IP address and port of the foreign device.
+func (f *FdtEntry) Address() netip.AddrPort {
+	return f.address
+}
+
+// BroadcastDistributionMask returns a defensive copy of the mask field.
+// Note: for FDT entries this field encodes the TTL/remaining-TTL bytes as
+// returned by the BBMD; use with awareness of the wire layout.
+func (f *FdtEntry) BroadcastDistributionMask() net.IPMask {
+	return net.IPMask(cloneBytes(f.broadcastDistributionMask))
+}
+
+// NewFdtEntry constructs a validated FdtEntry.
+// address must be a valid IPv4 address-port pair.
+// broadcastDistributionMask must be exactly 4 bytes.
+func NewFdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (*FdtEntry, error) {
+	if !address.Addr().Is4() || !address.IsValid() {
+		return nil, bacnet.NewValidationError("address", address, ErrInvalidIPAddress)
+	}
+
+	if len(broadcastDistributionMask) != net.IPv4len {
+		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	}
+
+	entry := &FdtEntry{
+		address:                   address,
+		broadcastDistributionMask: net.IPMask(cloneBytes(broadcastDistributionMask)),
+	}
+	if !entry.Valid() {
+		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	}
+	return entry, nil
+}
+
 type BdtEntry tableEntry
 
 func (b *BdtEntry) Valid() bool {
@@ -152,6 +208,16 @@ func (b *BdtEntry) Decode(data []byte) error {
 	return decodeTableEntry[BdtEntry](data, b)
 }
 
+// Address returns the IP address and port of the BDT peer.
+func (b *BdtEntry) Address() netip.AddrPort {
+	return b.address
+}
+
+// BroadcastDistributionMask returns a defensive copy of the subnet broadcast mask.
+func (b *BdtEntry) BroadcastDistributionMask() net.IPMask {
+	return net.IPMask(cloneBytes(b.broadcastDistributionMask))
+}
+
 type tableEntry struct {
 	// the IP address of the gateway if NAT is active, of the target otherwise
 	address netip.AddrPort
@@ -161,6 +227,21 @@ type tableEntry struct {
 
 type tableEntryKinds interface {
 	BdtEntry | FdtEntry
+}
+
+func newTableEntry[T tableEntryKinds](address netip.AddrPort, broadcastDistributionMask net.IPMask) (*T, error) {
+	if !address.Addr().Is4() || !address.IsValid() {
+		return nil, bacnet.NewValidationError("address", address, ErrInvalidIPAddress)
+	}
+
+	if len(broadcastDistributionMask) != net.IPv4len {
+		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	}
+
+	return new(T(tableEntry{
+		address:                   address,
+		broadcastDistributionMask: net.IPMask(cloneBytes(broadcastDistributionMask)),
+	})), nil
 }
 
 func decodeTableEntry[T tableEntryKinds](data []byte, target *T) error {
@@ -235,16 +316,28 @@ const (
 	FdtEntryDataLen = entryDataLen
 )
 
-func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) *BdtEntry {
-	return &BdtEntry{
-		address:                   address,
-		broadcastDistributionMask: broadcastDistributionMask,
+// NewBdtEntry constructs a validated BdtEntry.
+// address must be a valid IPv4 address-port pair.
+// broadcastDistributionMask must be exactly 4 bytes.
+func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (*BdtEntry, error) {
+	entry, err := newTableEntry[BdtEntry](address, broadcastDistributionMask)
+	if err != nil {
+		return nil, err
 	}
+
+	if !entry.Valid() {
+		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	}
+	return entry, nil
 }
 
 type entryList[T tableEntryKinds] []T
 
 func (l *entryList[T]) Decode(data []byte) error {
+	if l == nil {
+		return fmt.Errorf("cannot decode into nil list")
+	}
+
 	entries := make([]T, 0)
 	for i := 0; i < len(data); i += BdtEntryDataLen {
 		entryBytes := data[i : i+BdtEntryDataLen]
@@ -295,113 +388,36 @@ func (l *entryList[T]) Valid() bool {
 	return true
 }
 
-type BdtEntryList []BdtEntry
+type BdtEntryList entryList[BdtEntry]
 
 func (l *BdtEntryList) Decode(data []byte) error {
-	entries := make([]BdtEntry, 0)
-	for i := 0; i < len(data); i += BdtEntryDataLen {
-		entryBytes := data[i : i+BdtEntryDataLen]
-		var entry BdtEntry
-		err := decodeTableEntry(entryBytes, &entry)
-		if err != nil {
-			return fmt.Errorf("could not decode entry %d: %w", i, err)
-		}
-	}
-
-	*l = entries
-
-	return nil
-}
-
-func (l *BdtEntryList) Encode() ([]byte, error) {
-	if l == nil {
-		return nil, fmt.Errorf("cannot encode nil list")
-	}
-
-	out := make([]byte, 0)
-
-	for i, entry := range *l {
-		entryBytes, err := encodeTableEntry(&entry)
-		if err != nil {
-			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
-		}
-
-		out = append(out, entryBytes...)
-	}
-
-	return out, nil
-}
-
-func (l *BdtEntryList) Valid() bool {
-	if l == nil {
-		return false
-	}
-
-	valid := true
-
-	for _, entry := range *l {
-		valid = entry.Valid() && valid
-	}
-
-	return valid
-}
-
-type FdtEntryList []FdtEntry
-
-func (l *FdtEntryList) Decode(data []byte) error {
 	if l == nil {
 		return fmt.Errorf("cannot decode into nil list")
 	}
 
-	entries := make([]FdtEntry, 0)
+	return (*entryList[BdtEntry])(l).Decode(data)
+}
 
-	for i := 0; i < len(data); i += FdtEntryDataLen {
-		entryBytes := data[i : i+FdtEntryDataLen]
-		var entry FdtEntry
-		err := decodeTableEntry(entryBytes, &entry)
-		if err != nil {
-			return fmt.Errorf("could not decode entry %d: %w", i, err)
-		}
+func (l *BdtEntryList) Encode() ([]byte, error) {
+	return (*entryList[BdtEntry])(l).Encode()
+}
 
-		entries = append(entries, entry)
-	}
+func (l *BdtEntryList) Valid() bool {
+	return (*entryList[BdtEntry])(l).Valid()
+}
 
-	*l = entries
+type FdtEntryList entryList[FdtEntry]
 
-	return nil
+func (l *FdtEntryList) Decode(data []byte) error {
+	return (*entryList[FdtEntry])(l).Decode(data)
 }
 
 func (l *FdtEntryList) Encode() ([]byte, error) {
-	if l == nil {
-		return nil, fmt.Errorf("cannot encode nil list")
-	}
-
-	out := make([]byte, 0)
-
-	for i, entry := range *l {
-		entryBytes, err := encodeTableEntry(&entry)
-		if err != nil {
-			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
-		}
-
-		out = append(out, entryBytes...)
-	}
-
-	return out, nil
+	return (*entryList[FdtEntry])(l).Encode()
 }
 
 func (l *FdtEntryList) Valid() bool {
-	if l == nil {
-		return false
-	}
-
-	valid := true
-
-	for _, entry := range *l {
-		valid = entry.Valid() && valid
-	}
-
-	return valid
+	return (*entryList[FdtEntry])(l).Valid()
 }
 
 type WriteBroadcastDistributionTable struct {
@@ -418,13 +434,7 @@ func (w *WriteBroadcastDistributionTable) Valid() bool {
 		return false
 	}
 
-	entriesValid := true
-
-	for _, e := range w.bdtEntries {
-		entriesValid = entriesValid && e.Valid()
-	}
-
-	return w.header.Valid() && entriesValid
+	return w.header.Valid() && w.bdtEntries.Valid()
 }
 
 func (w *WriteBroadcastDistributionTable) Encode() ([]byte, error) {
@@ -432,21 +442,17 @@ func (w *WriteBroadcastDistributionTable) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-write-broadcast-distribution-table")
 	}
 
-	out, err := w.header.Encode()
+	headerBytes, err := w.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-write-broadcast-distribution-table: %w", err)
 	}
 
-	for i, entry := range w.bdtEntries {
-		entryBytes, err := entry.Encode()
-		if err != nil {
-			return nil, fmt.Errorf("encode bvlc-write-broadcast-distribution-table-entry %d: %w", i, err)
-		}
-
-		out = append(out, entryBytes...)
+	listBytes, err := w.bdtEntries.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("encode bvlc-write-broadcast-distribution-table: %w", err)
 	}
 
-	return out, nil
+	return append(headerBytes, listBytes...), nil
 }
 
 func (w *WriteBroadcastDistributionTable) Decode(data []byte) error {
@@ -476,6 +482,40 @@ func (w *WriteBroadcastDistributionTable) Decode(data []byte) error {
 	*w = res
 
 	return nil
+}
+
+// Entries returns a defensive copy of the BDT entries.
+func (w *WriteBroadcastDistributionTable) Entries() []BdtEntry {
+	out := make([]BdtEntry, len(w.bdtEntries))
+	copy(out, w.bdtEntries)
+	return out
+}
+
+// NewWriteBroadcastDistributionTable constructs a validated WriteBroadcastDistributionTable
+// for BACnet/IP (IPv4). entries must contain at least one valid BdtEntry.
+func NewWriteBroadcastDistributionTable(entries []BdtEntry) (*WriteBroadcastDistributionTable, error) {
+	if len(entries) == 0 {
+		return nil, bacnet.NewValidationError("entries", len(entries), ErrInvalidLength)
+	}
+
+	for i, e := range entries {
+		if !e.Valid() {
+			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+		}
+	}
+
+	entriesCopy := make(BdtEntryList, len(entries))
+	copy(entriesCopy, entries)
+	totalLen := BVLCHeaderLen + len(entries)*BdtEntryDataLen
+
+	return &WriteBroadcastDistributionTable{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionWriteBroadcastDistributionTable,
+			BVLCLength:       BVLCLength(totalLen),
+		},
+		bdtEntries: entriesCopy,
+	}, nil
 }
 
 type ReadBroadCastDistributionTable struct {
@@ -607,6 +647,13 @@ func NewReadBroadcastDistributionTable(entries []BdtEntry) *ReadBroadcastDistrib
 	}
 }
 
+// BdtEntries returns a defensive copy of the BDT entries.
+func (r *ReadBroadcastDistributionTable) BdtEntries() []BdtEntry {
+	out := make([]BdtEntry, len(r.entries))
+	copy(out, r.entries)
+	return out
+}
+
 type ReadBroadcastDistributionTableAck struct {
 	header  BVLCHeader
 	entries BdtEntryList
@@ -668,6 +715,38 @@ func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
 	return nil
 }
 
+// BdtEntries returns a defensive copy of the BDT entries carried in the ack.
+func (r *ReadBroadcastDistributionTableAck) BdtEntries() []BdtEntry {
+	out := make([]BdtEntry, len(r.entries))
+	copy(out, r.entries)
+	return out
+}
+
+// NewReadBroadcastDistributionTableAck constructs a validated
+// ReadBroadcastDistributionTableAck for BACnet/IP (IPv4).
+// entries may be empty (an empty BDT is valid per the standard).
+func NewReadBroadcastDistributionTableAck(entries []BdtEntry) (*ReadBroadcastDistributionTableAck, error) {
+	if entries == nil {
+		entries = make([]BdtEntry, 0)
+	}
+	for i, e := range entries {
+		if !e.Valid() {
+			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+		}
+	}
+	entriesCopy := make(BdtEntryList, len(entries))
+	copy(entriesCopy, entries)
+	totalLen := BVLCHeaderLen + len(entries)*BdtEntryDataLen
+	return &ReadBroadcastDistributionTableAck{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionReadBroadcastDistributionTableAck,
+			BVLCLength:       BVLCLength(totalLen),
+		},
+		entries: entriesCopy,
+	}, nil
+}
+
 type ForwardedNpdu struct {
 	header                          BVLCHeader
 	addressOfOriginatingDevice      netip.AddrPort
@@ -726,6 +805,44 @@ func (f *ForwardedNpdu) Decode(data []byte) error {
 	res.bacNetNpduFromOriginatingDevice = cloneBytes(data[BVLCHeaderLen+6:])
 
 	return nil
+}
+
+// OriginatingDeviceAddress returns the IP address and port of the originating device.
+func (f *ForwardedNpdu) OriginatingDeviceAddress() netip.AddrPort {
+	return f.addressOfOriginatingDevice
+}
+
+// NPDUBytes returns a defensive copy of the enclosed NPDU payload.
+func (f *ForwardedNpdu) NPDUBytes() []byte {
+	return cloneBytes(f.bacNetNpduFromOriginatingDevice)
+}
+
+// NewForwardedNpdu constructs a validated ForwardedNpdu for BACnet/IP (IPv4).
+// originAddr must be a valid IPv4 address-port pair.
+// npdu must be non-empty.
+func NewForwardedNpdu(originAddr netip.AddrPort, npdu []byte) (*ForwardedNpdu, error) {
+	if !originAddr.Addr().Is4() || !originAddr.IsValid() {
+		return nil, bacnet.NewValidationError("origin address", originAddr, ErrInvalidIPAddress)
+	}
+
+	if len(npdu) == 0 {
+		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+	}
+
+	totalLen := BVLCHeaderLen + 6 + len(npdu)
+	if totalLen > 0xFFFF {
+		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+	}
+
+	return &ForwardedNpdu{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionForwardedNPDU,
+			BVLCLength:       BVLCLength(totalLen),
+		},
+		addressOfOriginatingDevice:      originAddr,
+		bacNetNpduFromOriginatingDevice: cloneBytes(npdu),
+	}, nil
 }
 
 func encodeAddressPortIpV4(address netip.AddrPort) []byte {
@@ -812,6 +929,30 @@ func (r *RegisterForeignDevice) Decode(data []byte) error {
 	return nil
 }
 
+// TTL returns the time-to-live value of the foreign device registration.
+func (r *RegisterForeignDevice) TTL() TTL {
+	return r.ttl
+}
+
+// NewRegisterForeignDevice constructs a validated RegisterForeignDevice for BACnet/IP (IPv4).
+// ttl must be non-zero.
+func NewRegisterForeignDevice(ttl TTL) (*RegisterForeignDevice, error) {
+	if ttl == 0 {
+		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
+	}
+
+	const frameLen = BVLCHeaderLen + 2
+
+	return &RegisterForeignDevice{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionRegisterForeignDevice,
+			BVLCLength:       BVLCLength(frameLen),
+		},
+		ttl: ttl,
+	}, nil
+}
+
 type ReadForeignDeviceTable struct {
 	header BVLCHeader
 }
@@ -849,6 +990,17 @@ func (r *ReadForeignDeviceTable) Decode(data []byte) error {
 	*r = res
 
 	return nil
+}
+
+// NewReadForeignDeviceTable constructs a ReadForeignDeviceTable request for BACnet/IP (IPv4).
+func NewReadForeignDeviceTable() *ReadForeignDeviceTable {
+	return &ReadForeignDeviceTable{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionReadForeignDeviceTable,
+			BVLCLength:       BVLCHeaderLen,
+		},
+	}
 }
 
 type ReadForeignDeviceTableAck struct {
@@ -909,6 +1061,37 @@ func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
 	*r = res
 
 	return nil
+}
+
+// Entries returns a defensive copy of the FDT entries carried in the ack.
+func (r *ReadForeignDeviceTableAck) Entries() []FdtEntry {
+	out := make([]FdtEntry, len(r.entries))
+	copy(out, r.entries)
+	return out
+}
+
+// NewReadForeignDeviceTableAck constructs a validated ReadForeignDeviceTableAck
+// for BACnet/IP (IPv4). entries may be empty.
+func NewReadForeignDeviceTableAck(entries []FdtEntry) (*ReadForeignDeviceTableAck, error) {
+	if entries == nil {
+		entries = make([]FdtEntry, 0)
+	}
+	for i, e := range entries {
+		if !e.Valid() {
+			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+		}
+	}
+	entriesCopy := make(FdtEntryList, len(entries))
+	copy(entriesCopy, entries)
+	totalLen := BVLCHeaderLen + len(entries)*FdtEntryDataLen
+	return &ReadForeignDeviceTableAck{
+		header: BVLCHeader{
+			BVLCType:         BVLCTypeBACnetIP,
+			BVLCFunctionType: FunctionReadForeignDeviceTableAck,
+			BVLCLength:       BVLCLength(totalLen),
+		},
+		entries: entriesCopy,
+	}, nil
 }
 
 type DeleteForeignDeviceTableEntry struct {
