@@ -9,7 +9,7 @@ The Go module path is `go.wdy.de/bacnet`.
 | Path | Status | Purpose |
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
-| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; BBMD/FDT management interfaces in `client.go` (stubs, not yet implemented) |
+| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `client.go` |
 | `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
 | `encoding/` | planned | BACnet tag/value encoding |
 | `npdu/` | planned | BACnet network layer |
@@ -48,6 +48,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - **`PropertyIdentifier`**: implemented in `types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
 - **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
 - **BVLC function struct pattern**: each Annex J function is a pointer-receiver struct embedding a private `BVLCHeader` field and implementing the `BVLCFunction` interface (`BVLCFunctionType()`, `Valid()`, `Encode() ([]byte, error)`, `Decode([]byte) error`). Constructors (`NewOriginalUnicastNpdu`, `NewForwardedNpdu`, `NewRegisterForeignDevice`, etc.) validate all inputs, clone slice fields, and compute the `BVLCLength` field from the total wire size. See `bip/bvlc_functions.go`.
+- **BBMD pattern**: `BBMD` in `bip/client.go` is an interface with one `Handle*` method per inbound BVLC function (0x01, 0x02, 0x05, 0x06, 0x08). `NewBBMD(bdt []BdtEntry) (BBMD, error)` constructs `bbmdImpl`, which holds a `sync.RWMutex`-protected BDT slice and `map[netip.AddrPort]bbmdFdtEntry` FDT. The internal `bbmdFdtEntry` stores the registered TTL and an absolute `expiresAt` time (`now + ttl + 30s` per §J.5.2.3); `toWireFdtEntry()` sets unexported `FdtEntry` fields directly (same package) to encode the current remaining TTL. Expired entries are purged lazily in `HandleReadForeignDeviceTable`.
 - **`BVLCHeader`** is the shared internal header struct (`BVLCType` + `BVLCFunctionType` + `BVLCLength`) used in every BVLC function struct. `BVLCLength` has a `NewBVLCLength(int) (BVLCLength, error)` constructor for range-checked construction. Use `BVLCHeader.Encode()`/`BVLCHeader.Decode()` rather than encoding the header fields manually.
 
 ### Test conventions

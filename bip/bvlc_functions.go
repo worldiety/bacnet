@@ -257,7 +257,7 @@ type BdtEntry struct {
 }
 
 func (b *BdtEntry) Valid() bool {
-	if b == nil {
+	if b == nil || len(b.broadcastDistributionMask) != net.IPv4len {
 		return false
 	}
 
