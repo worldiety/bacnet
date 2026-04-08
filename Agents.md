@@ -9,7 +9,7 @@ The Go module path is `go.wdy.de/bacnet`.
 | Path | Status | Purpose |
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
-| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold |
+| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; BBMD/FDT management interfaces in `client.go` (stubs, not yet implemented) |
 | `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
 | `encoding/` | planned | BACnet tag/value encoding |
 | `npdu/` | planned | BACnet network layer |
@@ -47,6 +47,8 @@ The Go module path is `go.wdy.de/bacnet`.
 - **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`).
 - **`PropertyIdentifier`**: implemented in `types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
 - **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
+- **BVLC function struct pattern**: each Annex J function is a pointer-receiver struct embedding a private `BVLCHeader` field and implementing the `BVLCFunction` interface (`BVLCFunctionType()`, `Valid()`, `Encode() ([]byte, error)`, `Decode([]byte) error`). Constructors (`NewOriginalUnicastNpdu`, `NewForwardedNpdu`, `NewRegisterForeignDevice`, etc.) validate all inputs, clone slice fields, and compute the `BVLCLength` field from the total wire size. See `bip/bvlc_functions.go`.
+- **`BVLCHeader`** is the shared internal header struct (`BVLCType` + `BVLCFunctionType` + `BVLCLength`) used in every BVLC function struct. `BVLCLength` has a `NewBVLCLength(int) (BVLCLength, error)` constructor for range-checked construction. Use `BVLCHeader.Encode()`/`BVLCHeader.Decode()` rather than encoding the header fields manually.
 
 ### Test conventions
 - Test files use the same package as the code under test (e.g. `package bacnet`, `package apdu`, `package bip`) — **not** `*_test` external packages.

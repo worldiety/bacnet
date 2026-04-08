@@ -3,6 +3,7 @@ package bip
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"time"
@@ -143,21 +144,72 @@ func NewBVLCResult(resultCode BVLCResultCode) (*BVLCResult, error) {
 	}, nil
 }
 
-type FdtEntry tableEntry
+type FdtEntry struct {
+	address       netip.AddrPort
+	registeredTtl TTL
+	remainingTtl  TTL
+}
 
 func (f *FdtEntry) Valid() bool {
-	return tableEntryValid[FdtEntry](f)
+	if f == nil {
+		return false
+	}
+
+	remainingTtlValid := f.remainingTtl <= TTL(min(int(f.registeredTtl)+30, math.MaxUint16))
+
+	return f.address.Addr().Is4() && f.address.IsValid() &&
+		f.registeredTtl > 0 && remainingTtlValid
 }
 
 func (f *FdtEntry) Encode() ([]byte, error) {
 	if f == nil {
 		return nil, fmt.Errorf("nil bvlc-entry")
 	}
-	return encodeTableEntry[FdtEntry](f)
+
+	out := make([]byte, FdtEntryDataLen)
+
+	if !f.address.Addr().Is4() { //fdt entries require ipv4, should be guaranteed by constructor, check here anyway
+		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
+	}
+
+	copy(out[0:6], encodeAddressPortIpV4(f.address))
+
+	binary.BigEndian.PutUint16(out[6:8], uint16(f.registeredTtl))
+	binary.BigEndian.PutUint16(out[8:10], uint16(f.remainingTtl))
+
+	return out, nil
 }
 
 func (f *FdtEntry) Decode(data []byte) error {
-	return decodeTableEntry[FdtEntry](data, f)
+	if f == nil {
+		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	if len(data) != FdtEntryDataLen {
+		return fmt.Errorf("invalid length for fdt entry: %d", len(data))
+	}
+
+	address, err := decodeAddressPortIpV4(data[0:6])
+	if err != nil {
+		return fmt.Errorf("invalid ip in fdt entry: %w", err)
+	}
+
+	res := FdtEntry{
+		address:       address,
+		registeredTtl: 0,
+		remainingTtl:  0,
+	}
+
+	res.registeredTtl = TTL(binary.BigEndian.Uint16(data[6:8]))
+	res.remainingTtl = TTL(binary.BigEndian.Uint16(data[8:10]))
+
+	if !res.Valid() {
+		return fmt.Errorf("decoded invalid fdt entry")
+	}
+
+	*f = res
+
+	return nil
 }
 
 // Address returns the IP address and port of the foreign device.
@@ -165,87 +217,79 @@ func (f *FdtEntry) Address() netip.AddrPort {
 	return f.address
 }
 
-// BroadcastDistributionMask returns a defensive copy of the mask field.
-// Note: for FDT entries this field encodes the TTL/remaining-TTL bytes as
-// returned by the BBMD; use with awareness of the wire layout.
-func (f *FdtEntry) BroadcastDistributionMask() net.IPMask {
-	return net.IPMask(cloneBytes(f.broadcastDistributionMask))
+func (f *FdtEntry) RemainingTtl() TTL {
+	return f.remainingTtl
+}
+
+func (f *FdtEntry) RegisteredTtl() TTL {
+	return f.registeredTtl
 }
 
 // NewFdtEntry constructs a validated FdtEntry.
 // address must be a valid IPv4 address-port pair.
-// broadcastDistributionMask must be exactly 4 bytes.
-func NewFdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (*FdtEntry, error) {
+func NewFdtEntry(address netip.AddrPort, ttl TTL) (*FdtEntry, error) {
 	if !address.Addr().Is4() || !address.IsValid() {
 		return nil, bacnet.NewValidationError("address", address, ErrInvalidIPAddress)
 	}
 
-	if len(broadcastDistributionMask) != net.IPv4len {
-		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	if ttl == 0 {
+		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
+	}
+
+	remainingTtl := int(ttl) + 30
+
+	if remainingTtl > math.MaxUint16 {
+		remainingTtl = math.MaxUint16
 	}
 
 	entry := &FdtEntry{
-		address:                   address,
-		broadcastDistributionMask: net.IPMask(cloneBytes(broadcastDistributionMask)),
+		address:       address,
+		registeredTtl: ttl,
+		remainingTtl:  TTL(remainingTtl),
 	}
-	if !entry.Valid() {
-		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
-	}
+
 	return entry, nil
 }
 
-type BdtEntry tableEntry
-
-func (b *BdtEntry) Valid() bool {
-	return tableEntryValid[BdtEntry](b)
-}
-
-func (b *BdtEntry) Encode() ([]byte, error) {
-	return encodeTableEntry[BdtEntry](b)
-}
-
-func (b *BdtEntry) Decode(data []byte) error {
-	return decodeTableEntry[BdtEntry](data, b)
-}
-
-// Address returns the IP address and port of the BDT peer.
-func (b *BdtEntry) Address() netip.AddrPort {
-	return b.address
-}
-
-// BroadcastDistributionMask returns a defensive copy of the subnet broadcast mask.
-func (b *BdtEntry) BroadcastDistributionMask() net.IPMask {
-	return net.IPMask(cloneBytes(b.broadcastDistributionMask))
-}
-
-type tableEntry struct {
-	// the IP address of the gateway if NAT is active, of the target otherwise
-	address netip.AddrPort
-	// the subnet mask if NAT is active, 255.255.255.255 otherwise
+type BdtEntry struct {
+	address                   netip.AddrPort
 	broadcastDistributionMask net.IPMask
 }
 
-type tableEntryKinds interface {
-	BdtEntry | FdtEntry
-}
-
-func newTableEntry[T tableEntryKinds](address netip.AddrPort, broadcastDistributionMask net.IPMask) (*T, error) {
-	if !address.Addr().Is4() || !address.IsValid() {
-		return nil, bacnet.NewValidationError("address", address, ErrInvalidIPAddress)
+func (b *BdtEntry) Valid() bool {
+	if b == nil {
+		return false
 	}
 
-	if len(broadcastDistributionMask) != net.IPv4len {
-		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
-	}
+	addressValid := b.address.Addr().Is4() && b.address.IsValid()
 
-	return new(T(tableEntry{
-		address:                   address,
-		broadcastDistributionMask: net.IPMask(cloneBytes(broadcastDistributionMask)),
-	})), nil
+	maskValid := b.broadcastDistributionMask[0] >= b.broadcastDistributionMask[1] &&
+		b.broadcastDistributionMask[1] >= b.broadcastDistributionMask[2] &&
+		b.broadcastDistributionMask[2] >= b.broadcastDistributionMask[3]
+
+	return addressValid && maskValid
 }
 
-func decodeTableEntry[T tableEntryKinds](data []byte, target *T) error {
-	if target == nil {
+func (b *BdtEntry) Encode() ([]byte, error) {
+	if b == nil {
+		return nil, fmt.Errorf("cannot encode nil pointer")
+	}
+
+	out := make([]byte, BdtEntryDataLen)
+
+	if !b.address.Addr().Is4() { //bd entries require ipv4, should be guaranteed by constructor, check here anyway
+		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
+	}
+
+	copy(out[0:6], encodeAddressPortIpV4(b.address))
+
+	copy(out[6:10], b.broadcastDistributionMask)
+
+	return out, nil
+}
+
+func (b *BdtEntry) Decode(data []byte) error {
+	if b == nil {
 		return fmt.Errorf("cannot decode into nil pointer")
 	}
 
@@ -260,54 +304,28 @@ func decodeTableEntry[T tableEntryKinds](data []byte, target *T) error {
 
 	mask := net.IPv4Mask(data[6], data[7], data[8], data[9])
 
-	entry := T(tableEntry{
+	entry := BdtEntry{
 		address:                   address,
 		broadcastDistributionMask: mask,
-	})
+	}
 
-	if !tableEntryValid[T](&entry) {
+	if !entry.Valid() {
 		return fmt.Errorf("invalid bdt entry mask") // ip and port are valid, invalidity must be caused by mask
 	}
 
-	*target = entry
+	*b = entry
 
 	return nil
 }
 
-func encodeTableEntry[T tableEntryKinds](entry *T) ([]byte, error) {
-	if entry == nil {
-		return nil, fmt.Errorf("cannot encode nil pointer")
-	}
-
-	out := make([]byte, BdtEntryDataLen)
-
-	tEntry := tableEntry(*entry)
-
-	if !tEntry.address.Addr().Is4() { //bd entries require ipv4, should be guaranteed by constructor, check here anyway
-		return nil, fmt.Errorf("invalid bvlc-address, expected IPv4")
-	}
-
-	copy(out[0:6], encodeAddressPortIpV4(tEntry.address))
-
-	copy(out[7:9], tEntry.broadcastDistributionMask)
-
-	return out, nil
+// Address returns the IP address and port of the BDT peer.
+func (b *BdtEntry) Address() netip.AddrPort {
+	return b.address
 }
 
-func tableEntryValid[T tableEntryKinds](entry *T) bool {
-	if entry == nil {
-		return false
-	}
-
-	b := tableEntry(*entry)
-
-	addressValid := b.address.Addr().Is4() && b.address.IsValid()
-
-	maskValid := b.broadcastDistributionMask[3] >= b.broadcastDistributionMask[2] &&
-		b.broadcastDistributionMask[2] >= b.broadcastDistributionMask[1] &&
-		b.broadcastDistributionMask[1] >= b.broadcastDistributionMask[0]
-
-	return addressValid && maskValid
+// BroadcastDistributionMask returns a defensive copy of the subnet broadcast mask.
+func (b *BdtEntry) BroadcastDistributionMask() net.IPMask {
+	return net.IPMask(cloneBytes(b.broadcastDistributionMask))
 }
 
 const (
@@ -320,52 +338,61 @@ const (
 // address must be a valid IPv4 address-port pair.
 // broadcastDistributionMask must be exactly 4 bytes.
 func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (*BdtEntry, error) {
-	entry, err := newTableEntry[BdtEntry](address, broadcastDistributionMask)
-	if err != nil {
-		return nil, err
+	if broadcastDistributionMask == nil || len(broadcastDistributionMask) != net.IPv4len {
+		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+	}
+
+	entry := BdtEntry{
+		address:                   address,
+		broadcastDistributionMask: cloneBytes(broadcastDistributionMask),
 	}
 
 	if !entry.Valid() {
 		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
 	}
-	return entry, nil
+
+	return &entry, nil
 }
 
-type entryList[T tableEntryKinds] []T
+type BdtEntryList []BdtEntry
 
-func (l *entryList[T]) Decode(data []byte) error {
+func (l *BdtEntryList) Decode(data []byte) error {
 	if l == nil {
 		return fmt.Errorf("cannot decode into nil list")
 	}
 
-	entries := make([]T, 0)
-	for i := 0; i < len(data); i += BdtEntryDataLen {
-		entryBytes := data[i : i+BdtEntryDataLen]
-		var entry T
-		err := decodeTableEntry(entryBytes, &entry)
-		if err != nil {
-			return fmt.Errorf("could not decode entry %d: %w", i, err)
-		}
-
-		entries = append(entries, entry)
+	if len(data)%BdtEntryDataLen != 0 {
+		return fmt.Errorf("invalid length for bdt entry: %d", len(data))
 	}
 
-	*l = entries
+	list := make([]BdtEntry, 0)
+
+	for i := 0; i < len(data); i += BdtEntryDataLen {
+		entry := BdtEntry{}
+		err := entry.Decode(data[i : i+BdtEntryDataLen])
+		if err != nil {
+			return fmt.Errorf("invalid bdt entry %d: %w", i, err)
+		}
+
+		list = append(list, entry)
+	}
+
+	*l = list
 
 	return nil
 }
 
-func (l *entryList[T]) Encode() ([]byte, error) {
+func (l *BdtEntryList) Encode() ([]byte, error) {
 	if l == nil {
-		return nil, fmt.Errorf("cannot encode nil list")
+		return nil, fmt.Errorf("cannot encode into nil list")
 	}
 
-	out := make([]byte, 0)
+	out := make([]byte, 0, len(*l)*BdtEntryDataLen)
 
 	for i, entry := range *l {
-		entryBytes, err := encodeTableEntry(&entry)
+		entryBytes, err := entry.Encode()
 		if err != nil {
-			return nil, fmt.Errorf("could not encode entry %d: %w", i, err)
+			return nil, fmt.Errorf("invalid bdt entry %d: %w", i, err)
 		}
 
 		out = append(out, entryBytes...)
@@ -374,50 +401,77 @@ func (l *entryList[T]) Encode() ([]byte, error) {
 	return out, nil
 }
 
-func (l *entryList[T]) Valid() bool {
+func (l *BdtEntryList) Valid() bool {
 	if l == nil {
 		return false
 	}
 
+	v := true
 	for _, entry := range *l {
-		if !tableEntryValid[T](&entry) {
-			return false
-		}
+		v = v && entry.Valid()
 	}
 
-	return true
+	return v
 }
 
-type BdtEntryList entryList[BdtEntry]
+type FdtEntryList []FdtEntry
 
-func (l *BdtEntryList) Decode(data []byte) error {
+func (l *FdtEntryList) Decode(data []byte) error {
 	if l == nil {
 		return fmt.Errorf("cannot decode into nil list")
 	}
 
-	return (*entryList[BdtEntry])(l).Decode(data)
-}
+	if len(data)%FdtEntryDataLen != 0 {
+		return fmt.Errorf("invalid length for fdt entry list: %d", len(data))
+	}
 
-func (l *BdtEntryList) Encode() ([]byte, error) {
-	return (*entryList[BdtEntry])(l).Encode()
-}
+	list := make([]FdtEntry, 0)
 
-func (l *BdtEntryList) Valid() bool {
-	return (*entryList[BdtEntry])(l).Valid()
-}
+	for i := 0; i < len(data); i += FdtEntryDataLen {
+		entry := FdtEntry{}
+		err := entry.Decode(data[i : i+FdtEntryDataLen])
+		if err != nil {
+			return fmt.Errorf("invalid fdt entry %d: %w", i, err)
+		}
 
-type FdtEntryList entryList[FdtEntry]
+		list = append(list, entry)
+	}
 
-func (l *FdtEntryList) Decode(data []byte) error {
-	return (*entryList[FdtEntry])(l).Decode(data)
+	*l = list
+
+	return nil
 }
 
 func (l *FdtEntryList) Encode() ([]byte, error) {
-	return (*entryList[FdtEntry])(l).Encode()
+	if l == nil {
+		return nil, fmt.Errorf("cannot encode into nil list")
+	}
+
+	out := make([]byte, 0, len(*l)*FdtEntryDataLen)
+	for i, entry := range *l {
+		entryBytes, err := entry.Encode()
+		if err != nil {
+			return nil, fmt.Errorf("invalid fdt entry %d: %w", i, err)
+		}
+
+		out = append(out, entryBytes...)
+	}
+
+	return out, nil
 }
 
 func (l *FdtEntryList) Valid() bool {
-	return (*entryList[FdtEntry])(l).Valid()
+	if l == nil {
+		return false
+	}
+
+	v := true
+
+	for _, entry := range *l {
+		v = v && entry.Valid()
+	}
+
+	return v
 }
 
 type WriteBroadcastDistributionTable struct {
@@ -442,7 +496,7 @@ func (w *WriteBroadcastDistributionTable) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-write-broadcast-distribution-table")
 	}
 
-	headerBytes, err := w.header.Encode()
+	out, err := w.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-write-broadcast-distribution-table: %w", err)
 	}
@@ -452,7 +506,11 @@ func (w *WriteBroadcastDistributionTable) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("encode bvlc-write-broadcast-distribution-table: %w", err)
 	}
 
-	return append(headerBytes, listBytes...), nil
+	if copy(out[BVLCHeaderLen:], listBytes) != len(listBytes) {
+		return nil, fmt.Errorf("failed to encode bvlc-write-broadcast-distribution-table")
+	}
+
+	return out, nil
 }
 
 func (w *WriteBroadcastDistributionTable) Decode(data []byte) error {
@@ -468,6 +526,10 @@ func (w *WriteBroadcastDistributionTable) Decode(data []byte) error {
 	err := res.header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-write-broadcast-distribution-table header: %w", err)
+	}
+
+	if res.header.BVLCFunctionType != FunctionWriteBroadcastDistributionTable {
+		return fmt.Errorf("invalid function type, expected bvlc-write-broadcast-distribution-table")
 	}
 
 	err = res.bdtEntries.Decode(data[BVLCHeaderLen:])
@@ -518,25 +580,25 @@ func NewWriteBroadcastDistributionTable(entries []BdtEntry) (*WriteBroadcastDist
 	}, nil
 }
 
-type ReadBroadCastDistributionTable struct {
+type ReadBroadcastDistributionTable struct {
 	header BVLCHeader
 }
 
-func NewReadBroadCastDistributionTable(length uint16) *ReadBroadCastDistributionTable {
-	return &ReadBroadCastDistributionTable{
+func NewReadBroadcastDistributionTable() *ReadBroadcastDistributionTable {
+	return &ReadBroadcastDistributionTable{
 		header: BVLCHeader{
 			BVLCType:         BVLCTypeBACnetIP,
 			BVLCFunctionType: FunctionReadBroadcastDistributionTable,
-			BVLCLength:       BVLCLength(length),
+			BVLCLength:       BVLCLength(BVLCHeaderLen),
 		},
 	}
 }
 
-func (r *ReadBroadCastDistributionTable) BVLCFunctionType() BVLCFunctionType {
+func (r *ReadBroadcastDistributionTable) BVLCFunctionType() BVLCFunctionType {
 	return FunctionReadBroadcastDistributionTable
 }
 
-func (r *ReadBroadCastDistributionTable) Valid() bool {
+func (r *ReadBroadcastDistributionTable) Valid() bool {
 	if r == nil {
 		return false
 	}
@@ -544,7 +606,7 @@ func (r *ReadBroadCastDistributionTable) Valid() bool {
 	return r.header.Valid()
 }
 
-func (r *ReadBroadCastDistributionTable) Encode() ([]byte, error) {
+func (r *ReadBroadcastDistributionTable) Encode() ([]byte, error) {
 	if r == nil {
 		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table")
 	}
@@ -557,101 +619,25 @@ func (r *ReadBroadCastDistributionTable) Encode() ([]byte, error) {
 	return out, nil
 }
 
-func (r *ReadBroadCastDistributionTable) Decode(data []byte) error {
-	res := ReadBroadCastDistributionTable{}
+func (r *ReadBroadcastDistributionTable) Decode(data []byte) error {
+	if len(data) != BVLCHeaderLen {
+		return fmt.Errorf("invalid length for bvlc-read-broadcast-distribution-table")
+	}
+
+	res := ReadBroadcastDistributionTable{}
 
 	err := res.header.Decode(data)
 	if err != nil {
 		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table: %w", err)
 	}
 
-	*r = res
-
-	return nil
-}
-
-type ReadBroadcastDistributionTable struct {
-	header  BVLCHeader
-	entries BdtEntryList
-}
-
-func (r *ReadBroadcastDistributionTable) BVLCFunctionType() BVLCFunctionType {
-	return FunctionReadBroadcastDistributionTable
-}
-
-func (r *ReadBroadcastDistributionTable) Valid() bool {
-	if r == nil {
-		return false
-	}
-
-	return r.header.Valid() && r.entries.Valid()
-}
-
-func (r *ReadBroadcastDistributionTable) Encode() ([]byte, error) {
-	if r == nil {
-		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table")
-	}
-
-	headerBytes, err := r.header.Encode()
-	if err != nil {
-		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table: %w", err)
-	}
-
-	entryListBytes, err := r.entries.Encode()
-	if err != nil {
-		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table: %w", err)
-	}
-
-	return append(headerBytes, entryListBytes...), nil
-}
-
-func (r *ReadBroadcastDistributionTable) Decode(data []byte) error {
-	if len(data) < BVLCHeaderLen { // cannot contain header
-		return fmt.Errorf("invalid length for bvlc-read-broadcast-distribution-table")
-	}
-
-	res := ReadBroadcastDistributionTable{
-		header:  BVLCHeader{},
-		entries: make([]BdtEntry, 0),
-	}
-
-	err := res.header.Decode(data[:BVLCHeaderLen])
-	if err != nil {
-		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table header: %w", err)
-	}
-
-	if len(data) > BVLCHeaderLen { // does not contain any entries, this is valid
-		err = res.entries.Decode(data[BVLCHeaderLen:])
-		if err != nil {
-			return fmt.Errorf("decode bvlc-read-broadcast-distribution-table %w", err)
-		}
+	if res.header.BVLCFunctionType != FunctionReadBroadcastDistributionTable {
+		return fmt.Errorf("invalid function type, expected bvlc-read-broadcast-distribution-table")
 	}
 
 	*r = res
 
 	return nil
-}
-
-func NewReadBroadcastDistributionTable(entries []BdtEntry) *ReadBroadcastDistributionTable {
-	if entries == nil {
-		entries = make([]BdtEntry, 0)
-	}
-
-	return &ReadBroadcastDistributionTable{
-		header: BVLCHeader{
-			BVLCType:         BVLCTypeBACnetIP,
-			BVLCFunctionType: FunctionReadBroadcastDistributionTable,
-			BVLCLength:       BVLCLength(len(entries) * BdtEntryDataLen),
-		},
-		entries: entries,
-	}
-}
-
-// BdtEntries returns a defensive copy of the BDT entries.
-func (r *ReadBroadcastDistributionTable) BdtEntries() []BdtEntry {
-	out := make([]BdtEntry, len(r.entries))
-	copy(out, r.entries)
-	return out
 }
 
 type ReadBroadcastDistributionTableAck struct {
@@ -676,7 +662,7 @@ func (r *ReadBroadcastDistributionTableAck) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-read-broadcast-distribution-table-ack")
 	}
 
-	headerBytes, err := r.header.Encode()
+	out, err := r.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table-ack: %w", err)
 	}
@@ -686,10 +672,18 @@ func (r *ReadBroadcastDistributionTableAck) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("encode bvlc-read-broadcast-distribution-table-ack: %w", err)
 	}
 
-	return append(headerBytes, entryListBytes...), nil
+	if copy(out[BVLCHeaderLen:], entryListBytes) != len(entryListBytes) {
+		return nil, fmt.Errorf("failed to encode bvlc-read-broadcast-distribution-table-ack")
+	}
+
+	return out, nil
 }
 
 func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
+	if len(data) < BVLCHeaderLen {
+		return fmt.Errorf("invalid length for bvlc-read-broadcast-distribution-table-ack")
+	}
+
 	res := ReadBroadcastDistributionTableAck{
 		header:  BVLCHeader{},
 		entries: make([]BdtEntry, 0),
@@ -698,6 +692,10 @@ func (r *ReadBroadcastDistributionTableAck) Decode(data []byte) error {
 	err := res.header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-read-broadcast-distribution-table-ack: %w", err)
+	}
+
+	if res.header.BVLCFunctionType != FunctionReadBroadcastDistributionTableAck {
+		return fmt.Errorf("invalid function type, expected bvlc-read-broadcast-distribution-table-ack")
 	}
 
 	if len(data) > BVLCHeaderLen {
@@ -771,18 +769,22 @@ func (f *ForwardedNpdu) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-forwarded-npdu")
 	}
 
-	headerBytes, err := f.header.Encode()
+	out, err := f.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-forwarded-npdu: %w", err)
 	}
 
-	addressBytes := encodeAddressPortIpV4(f.addressOfOriginatingDevice)
+	npduBytes := append(encodeAddressPortIpV4(f.addressOfOriginatingDevice), f.bacNetNpduFromOriginatingDevice...)
 
-	return append(headerBytes, append(addressBytes, f.bacNetNpduFromOriginatingDevice...)...), nil
+	if copy(out[BVLCHeaderLen:], npduBytes) != len(npduBytes) {
+		return nil, fmt.Errorf("failed to encode bvlc-forwarded-npdu")
+	}
+
+	return out, nil
 }
 
 func (f *ForwardedNpdu) Decode(data []byte) error {
-	if len(data) < BVLCHeaderLen+6 { // cannot contain header and address
+	if len(data) <= BVLCHeaderLen+6 { // cannot contain header and address
 		return fmt.Errorf("invalid length for bvlc-forwarded-npdu")
 	}
 
@@ -797,12 +799,18 @@ func (f *ForwardedNpdu) Decode(data []byte) error {
 		return fmt.Errorf("decode bvlc-forwarded-npdu: %w", err)
 	}
 
+	if res.header.BVLCFunctionType != FunctionForwardedNPDU {
+		return fmt.Errorf("invalid function type, expected bvlc-forwarded-npdu")
+	}
+
 	res.addressOfOriginatingDevice, err = decodeAddressPortIpV4(data[BVLCHeaderLen : BVLCHeaderLen+6])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-forwarded-npdu address: %w", err)
 	}
 
 	res.bacNetNpduFromOriginatingDevice = cloneBytes(data[BVLCHeaderLen+6:])
+
+	*f = res
 
 	return nil
 }
@@ -846,9 +854,11 @@ func NewForwardedNpdu(originAddr netip.AddrPort, npdu []byte) (*ForwardedNpdu, e
 }
 
 func encodeAddressPortIpV4(address netip.AddrPort) []byte {
-	out := make([]byte, 0, 6)
+	out := make([]byte, 6)
 
-	copy(out[0:4], address.Addr().AsSlice())
+	ip4 := address.Addr().As4()
+
+	copy(out[0:4], ip4[:])
 	binary.BigEndian.PutUint16(out[4:], address.Port())
 
 	return out
@@ -882,7 +892,7 @@ func (r *RegisterForeignDevice) BVLCFunctionType() BVLCFunctionType {
 }
 
 func (r *RegisterForeignDevice) Valid() bool {
-	return r.header.Valid() && r.ttl != 0
+	return r != nil && r.header.Valid() && r.ttl != 0
 }
 
 func (r *RegisterForeignDevice) Encode() ([]byte, error) {
@@ -890,13 +900,10 @@ func (r *RegisterForeignDevice) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-register-foreign-device")
 	}
 
-	headerBytes, err := r.header.Encode()
+	out, err := r.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-register-foreign-device: %w", err)
 	}
-
-	out := make([]byte, BVLCHeaderLen+2)
-	copy(out[0:BVLCHeaderLen], headerBytes)
 
 	binary.BigEndian.PutUint16(out[BVLCHeaderLen:], uint16(r.ttl))
 
@@ -922,7 +929,15 @@ func (r *RegisterForeignDevice) Decode(data []byte) error {
 		return fmt.Errorf("decode bvlc-register-foreign-device: %w", err)
 	}
 
+	if res.header.BVLCFunctionType != FunctionRegisterForeignDevice {
+		return fmt.Errorf("invalid bvlc function type, expected register-foreign-device")
+	}
+
 	res.ttl = TTL(binary.BigEndian.Uint16(data[BVLCHeaderLen:]))
+
+	if !res.Valid() {
+		return fmt.Errorf("decoded invalid bvlc-register-foreign-device")
+	}
 
 	*r = res
 
@@ -962,7 +977,7 @@ func (r *ReadForeignDeviceTable) BVLCFunctionType() BVLCFunctionType {
 }
 
 func (r *ReadForeignDeviceTable) Valid() bool {
-	return r.header.Valid()
+	return r != nil && r.header.Valid()
 }
 
 func (r *ReadForeignDeviceTable) Encode() ([]byte, error) {
@@ -985,6 +1000,10 @@ func (r *ReadForeignDeviceTable) Decode(data []byte) error {
 	err := res.header.Decode(data[:])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-read-foreign-device-table: %w", err)
+	}
+
+	if res.header.BVLCFunctionType != FunctionReadForeignDeviceTable {
+		return fmt.Errorf("invalid bvlc function type, expected read-foreign-device-table")
 	}
 
 	*r = res
@@ -1025,7 +1044,7 @@ func (r *ReadForeignDeviceTableAck) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-read-foreign-device-table-ack")
 	}
 
-	headerBytes, err := r.header.Encode()
+	out, err := r.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-read-foreign-device-table-ack: %w", err)
 	}
@@ -1035,12 +1054,20 @@ func (r *ReadForeignDeviceTableAck) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("encode bvlc-read-foreign-device-table-ack: %w", err)
 	}
 
-	return append(headerBytes, listBytes...), nil
+	if copy(out[BVLCHeaderLen:], listBytes) != len(listBytes) {
+		return nil, fmt.Errorf("failed to encode bvlc-read-foreign-device-table-ack")
+	}
+
+	return out, nil
 }
 
 func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
 	if r == nil {
 		return fmt.Errorf("cannot decode into nil pointer")
+	}
+
+	if len(data) < BVLCHeaderLen {
+		return fmt.Errorf("invalid length for bvlc-read-foreign-device-table-ack")
 	}
 
 	res := ReadForeignDeviceTableAck{
@@ -1051,6 +1078,10 @@ func (r *ReadForeignDeviceTableAck) Decode(data []byte) error {
 	err := res.header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-read-foreign-device-table-ack: %w", err)
+	}
+
+	if res.header.BVLCFunctionType != FunctionReadForeignDeviceTableAck {
+		return fmt.Errorf("invalid bvlc function type, expected read-foreign-device-table-ack")
 	}
 
 	err = res.entries.Decode(data[BVLCHeaderLen:])
@@ -1096,7 +1127,7 @@ func NewReadForeignDeviceTableAck(entries []FdtEntry) (*ReadForeignDeviceTableAc
 
 type DeleteForeignDeviceTableEntry struct {
 	header BVLCHeader
-	entry  BdtEntry
+	entry  FdtEntry
 }
 
 func (d *DeleteForeignDeviceTableEntry) BVLCFunctionType() BVLCFunctionType {
@@ -1104,7 +1135,7 @@ func (d *DeleteForeignDeviceTableEntry) BVLCFunctionType() BVLCFunctionType {
 }
 
 func (d *DeleteForeignDeviceTableEntry) Valid() bool {
-	return d.header.Valid() && d.entry.Valid()
+	return d != nil && d.header.Valid() && d.entry.Valid()
 }
 
 func (d *DeleteForeignDeviceTableEntry) Encode() ([]byte, error) {
@@ -1112,7 +1143,7 @@ func (d *DeleteForeignDeviceTableEntry) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil delete-foreign-device-table-entry")
 	}
 
-	headerBytes, err := d.header.Encode()
+	out, err := d.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode delete-foreign-device-table-entry: %w", err)
 	}
@@ -1122,7 +1153,11 @@ func (d *DeleteForeignDeviceTableEntry) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("encode delete-foreign-device-table-entry: %w", err)
 	}
 
-	return append(headerBytes, entryBytes...), nil
+	if copy(out[BVLCHeaderLen:], entryBytes) != len(entryBytes) {
+		return nil, fmt.Errorf("could not encode delete-foreign-device-table-entry")
+	}
+
+	return out, nil
 }
 
 func (d *DeleteForeignDeviceTableEntry) Decode(data []byte) error {
@@ -1130,18 +1165,22 @@ func (d *DeleteForeignDeviceTableEntry) Decode(data []byte) error {
 		return fmt.Errorf("cannot decode into nil pointer")
 	}
 
-	if len(data) != BVLCHeaderLen+BdtEntryDataLen {
+	if len(data) != BVLCHeaderLen+entryDataLen {
 		return fmt.Errorf("invalid length for delete-foreign-device-table-entry")
 	}
 
 	res := DeleteForeignDeviceTableEntry{
 		header: BVLCHeader{},
-		entry:  BdtEntry{},
+		entry:  FdtEntry{},
 	}
 
 	err := res.header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode delete-foreign-device-table-entry header: %w", err)
+	}
+
+	if res.header.BVLCFunctionType != FunctionDeleteForeignDeviceTableEntry {
+		return fmt.Errorf("invalid bvlc function type, expected delete-foreign-device-table-entry")
 	}
 
 	err = res.entry.Decode(data[BVLCHeaderLen:])
@@ -1158,18 +1197,18 @@ func (d *DeleteForeignDeviceTableEntry) Decode(data []byte) error {
 	return nil
 }
 
-// BdtEntry returns a copy of the FDT entry to be deleted.
-func (d *DeleteForeignDeviceTableEntry) BdtEntry() BdtEntry {
+// FdtEntry returns a copy of the FDT entry to be deleted.
+func (d *DeleteForeignDeviceTableEntry) FdtEntry() FdtEntry {
 	return d.entry
 }
 
 // NewDeleteForeignDeviceTableEntry constructs a validated DeleteForeignDeviceTableEntry
 // for BACnet/IP (IPv4). entry must be valid.
-func NewDeleteForeignDeviceTableEntry(entry BdtEntry) (*DeleteForeignDeviceTableEntry, error) {
+func NewDeleteForeignDeviceTableEntry(entry FdtEntry) (*DeleteForeignDeviceTableEntry, error) {
 	if !entry.Valid() {
 		return nil, bacnet.NewValidationError("entry", entry, ErrInvalidIPAddress)
 	}
-	const frameLen = BVLCHeaderLen + BdtEntryDataLen
+	const frameLen = BVLCHeaderLen + entryDataLen
 	return &DeleteForeignDeviceTableEntry{
 		header: BVLCHeader{
 			BVLCType:         BVLCTypeBACnetIP,
@@ -1193,7 +1232,8 @@ func (d *DistributeBroadcastToNetwork) Valid() bool {
 	if d == nil {
 		return false
 	}
-	return d.header.Valid() && d.bacnetNpduFromOriginatingDevice != nil //TODO check npdu format
+
+	return d.header.Valid() && len(d.bacnetNpduFromOriginatingDevice) > 0 //TODO check npdu format
 }
 
 func (d *DistributeBroadcastToNetwork) Encode() ([]byte, error) {
@@ -1201,12 +1241,16 @@ func (d *DistributeBroadcastToNetwork) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("cannot encode nil bvlc-distribute-broadcast-to-network")
 	}
 
-	headerBytes, err := d.header.Encode()
+	out, err := d.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode bvlc-distribute-broadcast-to-network: %w", err)
 	}
 
-	return append(headerBytes, d.bacnetNpduFromOriginatingDevice...), nil
+	if copy(out[BVLCHeaderLen:], d.bacnetNpduFromOriginatingDevice) != len(d.bacnetNpduFromOriginatingDevice) {
+		return nil, fmt.Errorf("failed to encode bvlc-distribute-broadcast-to-network")
+	}
+
+	return out, nil
 }
 
 func (d *DistributeBroadcastToNetwork) Decode(data []byte) error {
@@ -1218,19 +1262,21 @@ func (d *DistributeBroadcastToNetwork) Decode(data []byte) error {
 		return fmt.Errorf("invalid length for distribute-broadcast-to-network")
 	}
 
-	res := DistributeBroadcastToNetwork{
-		header:                          BVLCHeader{},
-		bacnetNpduFromOriginatingDevice: make([]byte, 0, len(data)-BVLCHeaderLen),
-	}
+	header := BVLCHeader{}
 
-	err := res.header.Decode(data[:BVLCHeaderLen])
+	err := header.Decode(data[:BVLCHeaderLen])
 	if err != nil {
 		return fmt.Errorf("decode bvlc-distribute-broadcast-to-network: %w", err)
 	}
 
-	copy(res.bacnetNpduFromOriginatingDevice, data[BVLCHeaderLen:])
+	if header.BVLCFunctionType != FunctionDistributeBroadcastToNetwork {
+		return fmt.Errorf("invalid bvlc function type, expected DistributeBroadcastToNetwork")
+	}
 
-	*d = res
+	*d = DistributeBroadcastToNetwork{
+		header:                          header,
+		bacnetNpduFromOriginatingDevice: cloneBytes(data[BVLCHeaderLen:]),
+	}
 
 	return nil
 }
@@ -1319,15 +1365,21 @@ func (o *OriginalUnicastNpdu) Encode() ([]byte, error) {
 	if o == nil {
 		return nil, fmt.Errorf("cannot encode nil original-unicast-npdu")
 	}
+
 	if !o.Valid() {
 		return nil, fmt.Errorf("invalid original-unicast-npdu")
 	}
-	headerBytes, err := o.header.Encode()
+
+	out, err := o.header.Encode()
 	if err != nil {
 		return nil, fmt.Errorf("encode original-unicast-npdu: %w", err)
 	}
 
-	return append(headerBytes, o.bacnetNpdu...), nil
+	if copy(out[BVLCHeaderLen:], o.bacnetNpdu) != len(o.bacnetNpdu) {
+		return nil, fmt.Errorf("encode original-unicast-npdu")
+	}
+
+	return out, nil
 }
 
 // Decode parses wire bytes into the receiver.
@@ -1336,16 +1388,20 @@ func (o *OriginalUnicastNpdu) Decode(data []byte) error {
 	if o == nil {
 		return fmt.Errorf("cannot decode into nil pointer")
 	}
+
 	if len(data) <= BVLCHeaderLen {
 		return fmt.Errorf("invalid length for original-unicast-npdu")
 	}
+
 	res := OriginalUnicastNpdu{}
 	if err := res.header.Decode(data[:BVLCHeaderLen]); err != nil {
 		return fmt.Errorf("decode original-unicast-npdu header: %w", err)
 	}
+
 	if res.header.BVLCFunctionType != FunctionOriginalUnicastNPDU {
 		return fmt.Errorf("invalid function type for original-unicast-npdu: %s", res.header.BVLCFunctionType)
 	}
+
 	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
 	*o = res
 	return nil
@@ -1422,16 +1478,20 @@ func (o *OriginalBroadcastNpdu) Decode(data []byte) error {
 	if o == nil {
 		return fmt.Errorf("cannot decode into nil pointer")
 	}
+
 	if len(data) <= BVLCHeaderLen {
 		return fmt.Errorf("invalid length for original-broadcast-npdu")
 	}
+
 	res := OriginalBroadcastNpdu{}
 	if err := res.header.Decode(data[:BVLCHeaderLen]); err != nil {
 		return fmt.Errorf("decode original-broadcast-npdu header: %w", err)
 	}
+
 	if res.header.BVLCFunctionType != FunctionOriginalBroadcastNPDU {
 		return fmt.Errorf("invalid function type for original-broadcast-npdu: %s", res.header.BVLCFunctionType)
 	}
+
 	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
 	*o = res
 	return nil
