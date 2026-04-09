@@ -59,8 +59,18 @@ type ConfirmedHandler func(ctx context.Context, req ConfirmedRequest) (ServiceRe
 // UnconfirmedHandler processes unconfirmed requests.
 type UnconfirmedHandler func(ctx context.Context, req UnconfirmedRequest) error
 
-// ASE coordinates APDU dispatch and confirmed transaction lifecycle.
-type ASE struct {
+// ASE coordinates APDU dispatch and confirmed transaction lifecycle
+type ASE interface {
+	RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error
+	RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error
+	InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error)
+	SendUnconfirmed(ctx context.Context, address bacnet.Address, req UnconfirmedRequest) error
+	OnInbound(ctx context.Context, src bacnet.Address, raw []byte) error
+	Close() error
+}
+
+// aseImpl implements ASE.
+type aseImpl struct {
 	cfg       ASEConfig
 	codec     Codec
 	transport Transport
@@ -82,8 +92,8 @@ type transactionResult struct {
 	err error
 }
 
-// NewASE validates configuration and creates an ASE instance.
-func NewASE(cfg ASEConfig, codec Codec, transport Transport) (*ASE, error) {
+// NewASE validates configuration and creates an aseImpl instance.
+func NewASE(cfg ASEConfig, codec Codec, transport Transport) (ASE, error) {
 	if codec == nil {
 		return nil, ErrNilCodec
 	}
@@ -97,7 +107,7 @@ func NewASE(cfg ASEConfig, codec Codec, transport Transport) (*ASE, error) {
 		return nil, bacnet.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
 	}
 
-	return &ASE{
+	return &aseImpl{
 		cfg:                 cfg,
 		codec:               codec,
 		transport:           transport,
@@ -107,12 +117,12 @@ func NewASE(cfg ASEConfig, codec Codec, transport Transport) (*ASE, error) {
 	}, nil
 }
 
-// Close stops the ASE and fails all pending transactions.
-func (a *ASE) Close() {
+// Close stops the aseImpl and fails all pending transactions.
+func (a *aseImpl) Close() error {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return
+		return nil
 	}
 	a.closed = true
 	pending := a.transactions
@@ -122,10 +132,12 @@ func (a *ASE) Close() {
 	for _, tx := range pending {
 		tx.done <- transactionResult{err: ErrASEClosed}
 	}
+
+	return nil
 }
 
 // RegisterConfirmed registers a confirmed request handler for a service choice.
-func (a *ASE) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error {
+func (a *aseImpl) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error {
 	if handler == nil {
 		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
@@ -141,7 +153,7 @@ func (a *ASE) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) 
 }
 
 // RegisterUnconfirmed registers an unconfirmed request handler for a service choice.
-func (a *ASE) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error {
+func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error {
 	if handler == nil {
 		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
@@ -157,7 +169,7 @@ func (a *ASE) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandl
 }
 
 // InvokeConfirmed sends a confirmed request and waits for a terminal response APDU.
-func (a *ASE) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error) {
+func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error) {
 	txID, tx, err := a.startTransaction()
 	if err != nil {
 		return ConfirmedAck{}, err
@@ -199,7 +211,7 @@ func (a *ASE) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req Confi
 }
 
 // SendUnconfirmed sends an unconfirmed request APDU without creating a transaction.
-func (a *ASE) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req UnconfirmedRequest) error {
+func (a *aseImpl) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req UnconfirmedRequest) error {
 	raw, err := a.codec.Encode(OutboundAPDU{
 		Type:          PDUTypeUnconfirmedRequest,
 		ServiceChoice: req.ServiceChoice,
@@ -215,7 +227,7 @@ func (a *ASE) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req Uncon
 }
 
 // OnInbound decodes and dispatches an inbound APDU.
-func (a *ASE) OnInbound(ctx context.Context, src bacnet.Address, raw []byte) error {
+func (a *aseImpl) OnInbound(ctx context.Context, src bacnet.Address, raw []byte) error {
 	decoded, err := a.codec.Decode(raw)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrDecodeFailure, err)
@@ -233,7 +245,7 @@ func (a *ASE) OnInbound(ctx context.Context, src bacnet.Address, raw []byte) err
 	}
 }
 
-func (a *ASE) startTransaction() (InvokeID, transaction, error) {
+func (a *aseImpl) startTransaction() (InvokeID, transaction, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -258,13 +270,13 @@ func (a *ASE) startTransaction() (InvokeID, transaction, error) {
 	return 0, transaction{}, ErrNoInvokeIDAvailable
 }
 
-func (a *ASE) finishTransaction(id InvokeID) {
+func (a *aseImpl) finishTransaction(id InvokeID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.transactions, id)
 }
 
-func (a *ASE) handleConfirmedRequest(ctx context.Context, src bacnet.Address, in InboundAPDU) error {
+func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address, in InboundAPDU) error {
 	a.mu.Lock()
 	handler, ok := a.confirmedHandlers[in.ServiceChoice]
 	a.mu.Unlock()
@@ -301,7 +313,7 @@ func (a *ASE) handleConfirmedRequest(ctx context.Context, src bacnet.Address, in
 	return nil
 }
 
-func (a *ASE) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) error {
+func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) error {
 	a.mu.Lock()
 	handler, ok := a.unconfirmedHandlers[in.ServiceChoice]
 	a.mu.Unlock()
@@ -311,7 +323,7 @@ func (a *ASE) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) erro
 	return handler(ctx, UnconfirmedRequest{ServiceChoice: in.ServiceChoice, Payload: cloneBytes(in.Payload)})
 }
 
-func (a *ASE) completeTransaction(in InboundAPDU) error {
+func (a *aseImpl) completeTransaction(in InboundAPDU) error {
 	a.mu.Lock()
 	tx, ok := a.transactions[in.InvokeID]
 	if ok {
