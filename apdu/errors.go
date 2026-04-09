@@ -6,8 +6,9 @@ var (
 	ErrInvalidASEConfig = errors.New("invalid ASE config")
 	ErrNilCodec         = errors.New("codec is required")
 	ErrNilTransport     = errors.New("transport is required")
+	ErrNilASE           = errors.New("ASE is required")
 
-	ErrInvalidPDUType      = errors.New("invalid PDU type")
+	ErrInvalidPDUType       = errors.New("invalid PDU type")
 	ErrInvalidServiceChoice = errors.New("invalid service choice")
 
 	ErrHandlerAlreadyRegistered = errors.New("handler already registered")
@@ -27,4 +28,3 @@ var (
 	ErrRemoteReject = errors.New("remote reject APDU")
 	ErrRemoteAbort  = errors.New("remote abort APDU")
 )
-
