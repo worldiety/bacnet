@@ -9,7 +9,7 @@ The Go module path is `go.wdy.de/bacnet`.
 | Path | Status | Purpose |
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
-| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `client.go` |
+| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `bbmd.go`; `DeviceIp4` interface + `deviceImpl` (local broadcast + foreign device registration) in `device.go` |
 | `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
 | `encoding/` | planned | BACnet tag/value encoding |
 | `npdu/` | planned | BACnet network layer |

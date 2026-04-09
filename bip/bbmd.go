@@ -10,32 +10,6 @@ import (
 	"go.wdy.de/bacnet"
 )
 
-// DeviceIp4 defines the interface for a BACnet/IP client device.
-type DeviceIp4 interface {
-	// SendLocalBroadcast sends a broadcast to the local IP subnet,
-	// reaching all BACnet nodes on the client's subnet.
-	SendLocalBroadcast(msg OriginalBroadcastNpdu) error
-
-	// RegisterAsForeignDevice registers this device with the BBMD at bbmdAddr.
-	RegisterAsForeignDevice(bbmdAddr netip.Addr) error
-}
-
-// NewDeviceIp4 returns a new BACnet/IP client stub.
-func NewDeviceIp4() DeviceIp4 {
-	return &clientImpl{}
-}
-
-type clientImpl struct{}
-
-func (c *clientImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *clientImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
-	panic("implement me")
-}
-
 // BBMD is a BACnet Broadcast Management Device as defined in Annex J of ANSI/ASHRAE 135.
 //
 // A BBMD bridges BACnet broadcast traffic across IP subnets. It maintains two tables:
@@ -127,7 +101,9 @@ func (e *bbmdFdtEntry) expired() bool {
 }
 
 // toWireFdtEntry converts the internal entry to the wire-level FdtEntry for inclusion
-// in a Read-Foreign-Device-Table-Ack.
+// in a Read-Foreign-Device-Table-Ack. Because bbmdFdtEntry and FdtEntry share the bip
+// package, unexported fields can be set directly, encoding the current remaining TTL
+// rather than the initial (registered + 30) value.
 func (e *bbmdFdtEntry) toWireFdtEntry() FdtEntry {
 	return FdtEntry{
 		address:       e.address,
