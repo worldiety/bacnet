@@ -1,9 +1,9 @@
 # bacnet
 
 `bacnet` is a lightweight Go foundation for building BACnet/IP applications.
-It currently provides core protocol constants, identifier types, validation
-helpers, and addressing primitives that can be reused as the library grows
-into fuller BACnet/IP support.
+It currently provides the root BACnet types and addressing primitives plus
+active `bip`, `apdu`, and `npdu` packages for BACnet/IP BVLC framing,
+application-layer dispatch, and network-layer NPDU encode/decode scaffolding.
 
 ## Goals
 
@@ -18,14 +18,17 @@ into fuller BACnet/IP support.
 
 ## Current foundation
 
-This scaffold includes:
+The current implementation includes:
 
 - Package documentation in `doc.go`
 - BACnet/IP and identifier constants in `constants.go`
 - Core BACnet types in `types.go`
 - Validation and sentinel errors in `errors.go`
 - Basic station/network addressing in `address.go`
-- Unit tests for the exported foundation
+- `bip/` for BACnet/IP and BACnet/IP6 BVLC framing, UDP datagram transport, BBMD table handling, and foreign device registration support
+- `apdu/` for ASE dispatch, confirmed invoke tracking, and user-element abstractions
+- `npdu/` for BACnet NPDU encode/decode, routed/local APDU constructors, and network-layer-message constructors
+- Unit tests across the implemented packages
 
 ## Project structure
 
@@ -45,15 +48,16 @@ This scaffold includes:
 ├── apdu/        (active: BACnet application layer scaffold)
 ├── bip/         (active: BACnet/IP BVLC + transport scaffold)
 ├── encoding/    (planned: BACnet tag/value encoding)
-├── npdu/        (planned: BACnet network layer)
+├── npdu/        (active: BACnet network layer scaffold)
+├── lpdu/        (planned: BACnet IP link layer scaffold)
 ├── internal/    (planned: non-public helpers)
 ├── testdata/    (planned: packet fixtures)
 └── examples/    (deferred until API is stable)
 ```
 
-The current implementation includes the root `bacnet` package plus active `bip` and
-`apdu` scaffolds. Planned directories remain extension points for additional
-BACnet/IP layers.
+The current implementation includes the root `bacnet` package together with active
+`bip`, `apdu`, and `npdu` scaffolds. Planned directories remain extension points
+for additional BACnet/IP layers.
 
 ## Example
 
@@ -86,16 +90,17 @@ func main() {
 
 ```sh
 go test ./...
+go test -coverprofile=coverage.out ./...
 ```
 
 ## Next steps
 
 Natural next additions for the library are:
 
-1. NPDU header parsing and serialization
-2. Expanded APDU wire compatibility for additional services
-3. Expanded BACnet/IP Annex J support (for example BBMD/FDT management)
-4. A simple BACnet/IP client for discovery and property reads
+1. Expanded BACnet tag/value encoding in `encoding/`
+2. BACnet IP link-layer support in `lpdu/`
+3. Expanded APDU wire compatibility for additional BACnet services
+4. Higher-level BACnet/IP client workflows for discovery and property reads
 
 ## Notes
 

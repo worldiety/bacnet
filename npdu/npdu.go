@@ -7,23 +7,8 @@ import (
 	"go.wdy.de/bacnet"
 )
 
-// NetworkPriority is the 2-bit message-priority field of the NPCI,
-// per clause 6.2.2, Table 6-1 of ANSI/ASHRAE 135-2024.
-type NetworkPriority uint8
-
-const (
-	// NetworkPriorityNormal is normal-priority message delivery (lowest).
-	NetworkPriorityNormal NetworkPriority = 0b00
-	// NetworkPriorityUrgent is urgent-priority message delivery.
-	NetworkPriorityUrgent NetworkPriority = 0b01
-	// NetworkPriorityCriticalEquipment is critical-equipment-priority message delivery.
-	NetworkPriorityCriticalEquipment NetworkPriority = 0b10
-	// NetworkPriorityLifeSafety is life-safety-priority message delivery (highest).
-	NetworkPriorityLifeSafety NetworkPriority = 0b11
-)
-
-// minNPDULen is the minimum wire size of an NPDU (version byte + NPCI byte).
-const minNPDULen = 2
+// minNpduLen is the minimum wire size of an NPDU (version byte + NPCI byte).
+const minNpduLen = 2
 
 // Reserved NPCI bit masks per clause 6.2.2 — bits 4 and 6 must be zero on the wire.
 const ()
@@ -213,7 +198,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 	if n == nil {
 		return fmt.Errorf("%w: cannot decode into nil pointer", ErrDecodeFailure)
 	}
-	if len(data) < minNPDULen {
+	if len(data) < minNpduLen {
 		return bacnet.NewValidationError("data", len(data), ErrInvalidLength)
 	}
 
@@ -325,8 +310,8 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 // This is the most common form for BACnet/IP devices communicating on the same subnet.
 // priority controls the NPCI priority field. expectingReply sets the Expecting-Reply bit.
 // apdu must be non-empty.
-func NewLocalAPDU(priority NetworkPriority, expectingReply bool, apdu []byte) (*NetworkLayerProtocolDataUnit, error) {
-	if priority > NetworkPriorityLifeSafety {
+func NewLocalAPDU(priority bacnet.NetworkPriority, expectingReply bool, apdu []byte) (*NetworkLayerProtocolDataUnit, error) {
+	if priority > bacnet.NetworkPriorityLifeSafety {
 		return nil, bacnet.NewValidationError("priority", priority, ErrInvalidPriority)
 	}
 	if len(apdu) == 0 {
@@ -352,11 +337,11 @@ func NewRoutedAPDU(
 	dnet UltimateDestinationNetworkNumber,
 	dadr UltimateDestinationMacLayerAddress,
 	hopCount uint8,
-	priority NetworkPriority,
+	priority bacnet.NetworkPriority,
 	expectingReply bool,
 	apdu []byte,
 ) (*NetworkLayerProtocolDataUnit, error) {
-	if priority > NetworkPriorityLifeSafety {
+	if priority > bacnet.NetworkPriorityLifeSafety {
 		return nil, bacnet.NewValidationError("priority", priority, ErrInvalidPriority)
 	}
 	if len(apdu) == 0 {
@@ -391,11 +376,11 @@ func NewRoutedAPDU(
 // NewNetworkLayerMessage constructs an NPDU carrying a standard network layer message
 // (messageType < 0x80). For proprietary types use NewProprietaryNetworkLayerMessage.
 // data may be nil for message types that carry no payload.
-func NewNetworkLayerMessage(messageType uint8, data []byte, priority NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
+func NewNetworkLayerMessage(messageType uint8, data []byte, priority bacnet.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
 	if messageType >= 0x80 {
 		return nil, bacnet.NewValidationError("message type", messageType, ErrProprietaryMessageType)
 	}
-	if priority > NetworkPriorityLifeSafety {
+	if priority > bacnet.NetworkPriorityLifeSafety {
 		return nil, bacnet.NewValidationError("priority", priority, ErrInvalidPriority)
 	}
 
@@ -411,11 +396,11 @@ func NewNetworkLayerMessage(messageType uint8, data []byte, priority NetworkPrio
 // NewProprietaryNetworkLayerMessage constructs an NPDU carrying a proprietary network
 // layer message (messageType >= 0x80). vendorID identifies the originating vendor.
 // data may be nil.
-func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data []byte, priority NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
+func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data []byte, priority bacnet.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
 	if messageType < 0x80 {
 		return nil, bacnet.NewValidationError("message type", messageType, ErrInvalidMessageType)
 	}
-	if priority > NetworkPriorityLifeSafety {
+	if priority > bacnet.NetworkPriorityLifeSafety {
 		return nil, bacnet.NewValidationError("priority", priority, ErrInvalidPriority)
 	}
 
@@ -439,8 +424,8 @@ func (n *NetworkLayerProtocolDataUnit) Version() uint8 { return n.protocolVersio
 func (n *NetworkLayerProtocolDataUnit) Flags() NPCIFieldsFlags { return n.flags }
 
 // Priority returns the 2-bit network priority from the NPCI.
-func (n *NetworkLayerProtocolDataUnit) Priority() NetworkPriority {
-	return NetworkPriority(n.flags & networkPriorityMask)
+func (n *NetworkLayerProtocolDataUnit) Priority() bacnet.NetworkPriority {
+	return bacnet.NetworkPriority(n.flags & networkPriorityMask)
 }
 
 // IsExpectingReply reports whether the Expecting-Reply bit is set in the NPCI.

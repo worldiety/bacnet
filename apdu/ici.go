@@ -6,41 +6,6 @@ import (
 	"go.wdy.de/bacnet"
 )
 
-// NetworkPriority is the 2-bit network message priority field carried in the ICI of
-// every service primitive, per clause 6.2.2, Table 6-1 of ANSI/ASHRAE 135-2024.
-type NetworkPriority uint8
-
-const (
-	// NetworkPriorityNormal is the default (lowest) priority.
-	NetworkPriorityNormal NetworkPriority = 0b00
-	// NetworkPriorityUrgent is urgent-priority message delivery.
-	NetworkPriorityUrgent NetworkPriority = 0b01
-	// NetworkPriorityCriticalEquipment is used for critical-equipment messages.
-	NetworkPriorityCriticalEquipment NetworkPriority = 0b10
-	// NetworkPriorityLifeSafety is life-safety priority (highest).
-	NetworkPriorityLifeSafety NetworkPriority = 0b11
-)
-
-// Valid reports whether the value is one of the four defined NetworkPriority codes.
-func (n NetworkPriority) Valid() bool {
-	return n <= NetworkPriorityLifeSafety
-}
-
-func (n NetworkPriority) String() string {
-	switch n {
-	case NetworkPriorityNormal:
-		return "normal"
-	case NetworkPriorityUrgent:
-		return "urgent"
-	case NetworkPriorityCriticalEquipment:
-		return "critical-equipment"
-	case NetworkPriorityLifeSafety:
-		return "life-safety"
-	default:
-		return fmt.Sprintf("network-priority(%d)", n)
-	}
-}
-
 // MaxSegmentsAccepted is the 3-bit field that encodes the maximum number of APDU
 // segments a device is willing to accept in a segmented response, per clause 20.1.2.4
 // of ANSI/ASHRAE 135-2024.  It is included in the ICI of confirmed request and
@@ -148,7 +113,7 @@ type ConfirmedRequestICI struct {
 	MaxSegmentsAccepted MaxSegmentsAccepted
 
 	// Priority is the network message priority applied when transmitting this request.
-	Priority NetworkPriority
+	Priority bacnet.NetworkPriority
 
 	// ServiceRequest carries the confirmed service choice and its encoded parameters.
 	ServiceRequest ConfirmedRequest
@@ -166,7 +131,7 @@ type UnconfirmedRequestICI struct {
 	Destination bacnet.Address
 
 	// Priority is the network message priority applied when transmitting this request.
-	Priority NetworkPriority
+	Priority bacnet.NetworkPriority
 
 	// ServiceRequest carries the unconfirmed service choice and its encoded parameters.
 	ServiceRequest UnconfirmedRequest
@@ -196,7 +161,7 @@ type ConfirmedIndicationICI struct {
 	MaxSegmentsAccepted MaxSegmentsAccepted
 
 	// Priority is the network message priority of the received request.
-	Priority NetworkPriority
+	Priority bacnet.NetworkPriority
 
 	// DataExpectingReply reports whether the originator expects a confirmed response.
 	// This is always true for confirmed service requests.
@@ -217,7 +182,7 @@ type UnconfirmedIndicationICI struct {
 	Source bacnet.Address
 
 	// Priority is the network message priority of the received request.
-	Priority NetworkPriority
+	Priority bacnet.NetworkPriority
 
 	// ServiceRequest carries the unconfirmed service choice and its encoded parameters.
 	ServiceRequest UnconfirmedRequest

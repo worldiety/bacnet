@@ -33,7 +33,7 @@ func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 		return nil, err
 	}
 
-	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, BACnetIpDefaultUdpPort))
+	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, bacnet.IpDefaultUdpPort))
 	conn, err := net.ListenUDP(network, udpAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)

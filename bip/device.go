@@ -53,7 +53,7 @@ func (d *deviceImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
 		return fmt.Errorf("encode original-broadcast-npdu: %w", err)
 	}
 
-	dst := netip.AddrPortFrom(netip.MustParseAddr("255.255.255.255"), BACnetIpDefaultUdpPort)
+	dst := netip.AddrPortFrom(netip.MustParseAddr("255.255.255.255"), bacnet.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
@@ -76,7 +76,7 @@ func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 		return fmt.Errorf("encode register-foreign-device: %w", err)
 	}
 
-	dst := netip.AddrPortFrom(bbmdAddr, BACnetIpDefaultUdpPort)
+	dst := netip.AddrPortFrom(bbmdAddr, bacnet.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}

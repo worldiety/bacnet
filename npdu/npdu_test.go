@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"go.wdy.de/bacnet"
 )
 
 // --- Valid() ---
@@ -186,7 +188,7 @@ func TestValid(t *testing.T) {
 //	0x04 = NPCI (bit 2: expecting reply, priority normal)
 //	0xDE, 0xAD = APDU
 func TestEncodeLocalAPDU(t *testing.T) {
-	n, err := NewLocalAPDU(NetworkPriorityNormal, true, []byte{0xDE, 0xAD})
+	n, err := NewLocalAPDU(bacnet.NetworkPriorityNormal, true, []byte{0xDE, 0xAD})
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestEncodeLocalAPDU(t *testing.T) {
 //	0xFF = HopCount
 //	0x10, 0x08 = APDU
 func TestEncodeRoutedBroadcast(t *testing.T) {
-	n, err := NewRoutedAPDU(0xFFFF, nil, 0xFF, NetworkPriorityNormal, false, []byte{0x10, 0x08})
+	n, err := NewRoutedAPDU(0xFFFF, nil, 0xFF, bacnet.NetworkPriorityNormal, false, []byte{0x10, 0x08})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -233,7 +235,7 @@ func TestEncodeRoutedBroadcast(t *testing.T) {
 //
 // Wire: [0x01][0x20][0x00][0x01][0x03][0x01][0x02][0x03][0x0A][0x0C]
 func TestEncodeRoutedUnicast(t *testing.T) {
-	n, err := NewRoutedAPDU(1, []byte{0x01, 0x02, 0x03}, 0x0A, NetworkPriorityNormal, false, []byte{0x0C})
+	n, err := NewRoutedAPDU(1, []byte{0x01, 0x02, 0x03}, 0x0A, bacnet.NetworkPriorityNormal, false, []byte{0x0C})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -321,7 +323,7 @@ func TestEncodeWithBothSpecifiers(t *testing.T) {
 //
 // Wire: [0x01][0x80][0x01][0xDE][0xAD]
 func TestEncodeNetworkLayerMessage(t *testing.T) {
-	n, err := NewNetworkLayerMessage(0x01, []byte{0xDE, 0xAD}, NetworkPriorityNormal)
+	n, err := NewNetworkLayerMessage(0x01, []byte{0xDE, 0xAD}, bacnet.NetworkPriorityNormal)
 	if err != nil {
 		t.Fatalf("NewNetworkLayerMessage: %v", err)
 	}
@@ -342,7 +344,7 @@ func TestEncodeNetworkLayerMessage(t *testing.T) {
 //
 // Wire: [0x01][0x80][0x80][0x12][0x34][0x42]
 func TestEncodeProprietaryNetworkLayerMessage(t *testing.T) {
-	n, err := NewProprietaryNetworkLayerMessage(0x80, 0x1234, []byte{0x42}, NetworkPriorityNormal)
+	n, err := NewProprietaryNetworkLayerMessage(0x80, 0x1234, []byte{0x42}, bacnet.NetworkPriorityNormal)
 	if err != nil {
 		t.Fatalf("NewProprietaryNetworkLayerMessage: %v", err)
 	}
@@ -447,11 +449,11 @@ func TestDecodeErrors(t *testing.T) {
 // --- Encode/Decode roundtrips ---
 
 func TestRoundtrip(t *testing.T) {
-	localApdu, _ := NewLocalAPDU(NetworkPriorityUrgent, true, []byte{0x0C, 0x0C})
-	routedBroadcast, _ := NewRoutedAPDU(0xFFFF, nil, 255, NetworkPriorityNormal, false, []byte{0x10})
-	routedUnicast, _ := NewRoutedAPDU(7, []byte{0xAA, 0xBB}, 10, NetworkPriorityLifeSafety, true, []byte{0xFF})
-	nlMsg, _ := NewNetworkLayerMessage(0x04, []byte{0x01, 0x02}, NetworkPriorityNormal)
-	propMsg, _ := NewProprietaryNetworkLayerMessage(0xFF, 0xABCD, []byte{0x99}, NetworkPriorityCriticalEquipment)
+	localApdu, _ := NewLocalAPDU(bacnet.NetworkPriorityUrgent, true, []byte{0x0C, 0x0C})
+	routedBroadcast, _ := NewRoutedAPDU(0xFFFF, nil, 255, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	routedUnicast, _ := NewRoutedAPDU(7, []byte{0xAA, 0xBB}, 10, bacnet.NetworkPriorityLifeSafety, true, []byte{0xFF})
+	nlMsg, _ := NewNetworkLayerMessage(0x04, []byte{0x01, 0x02}, bacnet.NetworkPriorityNormal)
+	propMsg, _ := NewProprietaryNetworkLayerMessage(0xFF, 0xABCD, []byte{0x99}, bacnet.NetworkPriorityCriticalEquipment)
 
 	tests := []struct {
 		name string
@@ -498,16 +500,16 @@ func TestRoundtrip(t *testing.T) {
 func TestNewLocalAPDU(t *testing.T) {
 	tests := []struct {
 		name        string
-		priority    NetworkPriority
+		priority    bacnet.NetworkPriority
 		expectReply bool
 		apdu        []byte
 		wantErr     error
 	}{
-		{"valid normal priority", NetworkPriorityNormal, false, []byte{0x10}, nil},
-		{"valid life safety", NetworkPriorityLifeSafety, true, []byte{0x10}, nil},
+		{"valid normal priority", bacnet.NetworkPriorityNormal, false, []byte{0x10}, nil},
+		{"valid life safety", bacnet.NetworkPriorityLifeSafety, true, []byte{0x10}, nil},
 		{"priority out of range", 4, false, []byte{0x10}, ErrInvalidPriority},
-		{"empty apdu", NetworkPriorityNormal, false, []byte{}, ErrInvalidLength},
-		{"nil apdu", NetworkPriorityNormal, false, nil, ErrInvalidLength},
+		{"empty apdu", bacnet.NetworkPriorityNormal, false, []byte{}, ErrInvalidLength},
+		{"nil apdu", bacnet.NetworkPriorityNormal, false, nil, ErrInvalidLength},
 	}
 
 	for _, tt := range tests {
@@ -541,15 +543,15 @@ func TestNewRoutedAPDU(t *testing.T) {
 		dnet     UltimateDestinationNetworkNumber
 		dadr     UltimateDestinationMacLayerAddress
 		hopCount uint8
-		priority NetworkPriority
+		priority bacnet.NetworkPriority
 		apdu     []byte
 		wantErr  error
 	}{
-		{"broadcast on remote net", 100, nil, 255, NetworkPriorityNormal, []byte{0x10}, nil},
-		{"unicast on remote net", 100, []byte{0xAA, 0xBB}, 10, NetworkPriorityNormal, []byte{0x10}, nil},
-		{"global broadcast", 0xFFFF, nil, 255, NetworkPriorityNormal, []byte{0x10}, nil},
+		{"broadcast on remote net", 100, nil, 255, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
+		{"unicast on remote net", 100, []byte{0xAA, 0xBB}, 10, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
+		{"global broadcast", 0xFFFF, nil, 255, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
 		{"priority out of range", 1, nil, 255, 5, []byte{0x10}, ErrInvalidPriority},
-		{"empty apdu", 1, nil, 255, NetworkPriorityNormal, nil, ErrInvalidLength},
+		{"empty apdu", 1, nil, 255, bacnet.NetworkPriorityNormal, nil, ErrInvalidLength},
 	}
 
 	for _, tt := range tests {
@@ -582,12 +584,12 @@ func TestNewNetworkLayerMessage(t *testing.T) {
 		name        string
 		messageType uint8
 		data        []byte
-		priority    NetworkPriority
+		priority    bacnet.NetworkPriority
 		wantErr     error
 	}{
-		{"standard type", 0x01, []byte{0xDE, 0xAD}, NetworkPriorityNormal, nil},
-		{"standard type no data", 0x04, nil, NetworkPriorityNormal, nil},
-		{"proprietary type rejected", 0x80, nil, NetworkPriorityNormal, ErrProprietaryMessageType},
+		{"standard type", 0x01, []byte{0xDE, 0xAD}, bacnet.NetworkPriorityNormal, nil},
+		{"standard type no data", 0x04, nil, bacnet.NetworkPriorityNormal, nil},
+		{"proprietary type rejected", 0x80, nil, bacnet.NetworkPriorityNormal, ErrProprietaryMessageType},
 		{"priority out of range", 0x01, nil, 5, ErrInvalidPriority},
 	}
 
@@ -622,12 +624,12 @@ func TestNewProprietaryNetworkLayerMessage(t *testing.T) {
 		messageType uint8
 		vendorID    uint16
 		data        []byte
-		priority    NetworkPriority
+		priority    bacnet.NetworkPriority
 		wantErr     error
 	}{
-		{"valid", 0x80, 0x1234, []byte{0x42}, NetworkPriorityNormal, nil},
-		{"max type", 0xFF, 0xFFFF, nil, NetworkPriorityNormal, nil},
-		{"standard type rejected", 0x7F, 0x1234, nil, NetworkPriorityNormal, ErrInvalidMessageType},
+		{"valid", 0x80, 0x1234, []byte{0x42}, bacnet.NetworkPriorityNormal, nil},
+		{"max type", 0xFF, 0xFFFF, nil, bacnet.NetworkPriorityNormal, nil},
+		{"standard type rejected", 0x7F, 0x1234, nil, bacnet.NetworkPriorityNormal, ErrInvalidMessageType},
 		{"priority out of range", 0x80, 0x1234, nil, 9, ErrInvalidPriority},
 	}
 
@@ -654,7 +656,7 @@ func TestNewProprietaryNetworkLayerMessage(t *testing.T) {
 
 func TestNewLocalAPDUDefensiveCopy(t *testing.T) {
 	apdu := []byte{0x10, 0x08}
-	n, _ := NewLocalAPDU(NetworkPriorityNormal, false, apdu)
+	n, _ := NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apdu)
 
 	// Mutating original slice must not affect the NPDU.
 	apdu[0] = 0xFF
@@ -664,7 +666,7 @@ func TestNewLocalAPDUDefensiveCopy(t *testing.T) {
 }
 
 func TestAPDUBytesDefensiveCopy(t *testing.T) {
-	n, _ := NewLocalAPDU(NetworkPriorityNormal, false, []byte{0x10, 0x08})
+	n, _ := NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x10, 0x08})
 
 	a := n.APDUBytes()
 	a[0] = 0xFF
@@ -674,7 +676,7 @@ func TestAPDUBytesDefensiveCopy(t *testing.T) {
 }
 
 func TestDADRDefensiveCopy(t *testing.T) {
-	n, _ := NewRoutedAPDU(1, []byte{0xAA, 0xBB}, 255, NetworkPriorityNormal, false, []byte{0x10})
+	n, _ := NewRoutedAPDU(1, []byte{0xAA, 0xBB}, 255, bacnet.NetworkPriorityNormal, false, []byte{0x10})
 
 	dadr := n.DADR()
 	dadr[0] = 0xFF
@@ -701,12 +703,12 @@ func TestDecodeIsDefensiveCopy(t *testing.T) {
 func TestPriority(t *testing.T) {
 	tests := []struct {
 		name     string
-		priority NetworkPriority
+		priority bacnet.NetworkPriority
 	}{
-		{"Normal", NetworkPriorityNormal},
-		{"Urgent", NetworkPriorityUrgent},
-		{"CriticalEquipment", NetworkPriorityCriticalEquipment},
-		{"LifeSafety", NetworkPriorityLifeSafety},
+		{"Normal", bacnet.NetworkPriorityNormal},
+		{"Urgent", bacnet.NetworkPriorityUrgent},
+		{"CriticalEquipment", bacnet.NetworkPriorityCriticalEquipment},
+		{"LifeSafety", bacnet.NetworkPriorityLifeSafety},
 	}
 
 	for _, tt := range tests {

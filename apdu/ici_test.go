@@ -10,15 +10,15 @@ import (
 
 func TestNetworkPriorityString(t *testing.T) {
 	tests := []struct {
-		p    NetworkPriority
+		p    bacnet.NetworkPriority
 		want string
 	}{
-		{NetworkPriorityNormal, "normal"},
-		{NetworkPriorityUrgent, "urgent"},
-		{NetworkPriorityCriticalEquipment, "critical-equipment"},
-		{NetworkPriorityLifeSafety, "life-safety"},
-		{NetworkPriority(4), "network-priority(4)"},
-		{NetworkPriority(255), "network-priority(255)"},
+		{bacnet.NetworkPriorityNormal, "normal"},
+		{bacnet.NetworkPriorityUrgent, "urgent"},
+		{bacnet.NetworkPriorityCriticalEquipment, "critical-equipment"},
+		{bacnet.NetworkPriorityLifeSafety, "life-safety"},
+		{bacnet.NetworkPriority(4), "network-priority(4)"},
+		{bacnet.NetworkPriority(255), "network-priority(255)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -31,15 +31,15 @@ func TestNetworkPriorityString(t *testing.T) {
 
 func TestNetworkPriorityValid(t *testing.T) {
 	tests := []struct {
-		p    NetworkPriority
+		p    bacnet.NetworkPriority
 		want bool
 	}{
-		{NetworkPriorityNormal, true},
-		{NetworkPriorityUrgent, true},
-		{NetworkPriorityCriticalEquipment, true},
-		{NetworkPriorityLifeSafety, true},
-		{NetworkPriority(4), false},
-		{NetworkPriority(255), false},
+		{bacnet.NetworkPriorityNormal, true},
+		{bacnet.NetworkPriorityUrgent, true},
+		{bacnet.NetworkPriorityCriticalEquipment, true},
+		{bacnet.NetworkPriorityLifeSafety, true},
+		{bacnet.NetworkPriority(4), false},
+		{bacnet.NetworkPriority(255), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.p.String(), func(t *testing.T) {
@@ -122,7 +122,7 @@ func TestConfirmedRequestICIFields(t *testing.T) {
 		MaxAPDULengthAccepted: 1476,
 		SegmentationSupported: SegmentationBoth,
 		MaxSegmentsAccepted:   MaxSegments16,
-		Priority:              NetworkPriorityUrgent,
+		Priority:              bacnet.NetworkPriorityUrgent,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x0C, 0x02},
@@ -153,15 +153,15 @@ func TestUnconfirmedRequestICIFields(t *testing.T) {
 	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0xFF})
 	ici := UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    NetworkPriorityNormal,
+		Priority:    bacnet.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x00, 0xFF},
 		},
 	}
 
-	if ici.Priority != NetworkPriorityNormal {
-		t.Errorf("Priority = %v, want %v", ici.Priority, NetworkPriorityNormal)
+	if ici.Priority != bacnet.NetworkPriorityNormal {
+		t.Errorf("Priority = %v, want %v", ici.Priority, bacnet.NetworkPriorityNormal)
 	}
 	if ici.ServiceRequest.ServiceChoice != ServiceChoiceWhoIs {
 		t.Errorf("ServiceChoice = %v, want %v", ici.ServiceRequest.ServiceChoice, ServiceChoiceWhoIs)
@@ -176,7 +176,7 @@ func TestConfirmedIndicationICIDataExpectingReply(t *testing.T) {
 		MaxAPDULengthAccepted: 1476,
 		SegmentationSupported: SegmentationNo,
 		MaxSegmentsAccepted:   MaxSegmentsUnspecified,
-		Priority:              NetworkPriorityNormal,
+		Priority:              bacnet.NetworkPriorityNormal,
 		DataExpectingReply:    true, // always true for confirmed services
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
@@ -199,7 +199,7 @@ func TestUnconfirmedIndicationICIFields(t *testing.T) {
 	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x03})
 	ici := UnconfirmedIndicationICI{
 		Source:   src,
-		Priority: NetworkPriorityNormal,
+		Priority: bacnet.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceIAm,
 			Payload:       []byte{0xDE, 0xAD},
@@ -273,7 +273,7 @@ func TestConfirmICINonPositiveAckNilServiceResponse(t *testing.T) {
 // --- String() fallback coverage ---
 
 func TestNetworkPriorityStringFallback(t *testing.T) {
-	got := NetworkPriority(0xFF).String()
+	got := bacnet.NetworkPriority(0xFF).String()
 	want := "network-priority(255)"
 	if got != want {
 		t.Errorf("String() = %q, want %q", got, want)
