@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/internal/util"
 )
 
 type testCodec struct{}
@@ -29,7 +30,7 @@ func (testCodec) Decode(raw []byte) (InboundAPDU, error) {
 		Type:          PDUType(raw[0]),
 		InvokeID:      InvokeID(raw[1]),
 		ServiceChoice: ServiceChoice(raw[2]),
-		Payload:       cloneBytes(raw[3:]),
+		Payload:       util.CloneBytes(raw[3:]),
 	}, nil
 }
 
@@ -49,7 +50,7 @@ func newTestTransport() *testTransport {
 }
 
 func (t *testTransport) SendAPDU(_ context.Context, dst bacnet.Address, apdu []byte) error {
-	frame := sentFrame{dst: dst, pdu: cloneBytes(apdu)}
+	frame := sentFrame{dst: dst, pdu: util.CloneBytes(apdu)}
 	t.mu.Lock()
 	t.sent = append(t.sent, frame)
 	t.mu.Unlock()
@@ -206,3 +207,97 @@ func TestInboundConfirmedDispatch(t *testing.T) {
 	}
 }
 
+func TestInvokeConfirmedSegmentationRequired(t *testing.T) {
+	transport := newTestTransport()
+	ase, err := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4, MaxAPDUSizeAccepted: 1}, testCodec{}, transport)
+	if err != nil {
+		t.Fatalf("NewASE returned error: %v", err)
+	}
+
+	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	if err != nil {
+		t.Fatalf("NewAddress returned error: %v", err)
+	}
+
+	_, err = ase.InvokeConfirmed(context.Background(), dst, ConfirmedRequest{ServiceChoice: ServiceChoiceReadProperty, Payload: []byte{0xAA, 0xBB}})
+	if !errors.Is(err, ErrSegmentationNotSupported) {
+		t.Fatalf("InvokeConfirmed error = %v, want %v", err, ErrSegmentationNotSupported)
+	}
+
+	select {
+	case frame := <-transport.ch:
+		t.Fatalf("unexpected outbound frame: %+v", frame)
+	default:
+	}
+}
+
+func TestSendUnconfirmedSegmentationRequired(t *testing.T) {
+	transport := newTestTransport()
+	ase, err := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4, MaxAPDUSizeAccepted: 1}, testCodec{}, transport)
+	if err != nil {
+		t.Fatalf("NewASE returned error: %v", err)
+	}
+
+	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	if err != nil {
+		t.Fatalf("NewAddress returned error: %v", err)
+	}
+
+	err = ase.SendUnconfirmed(context.Background(), dst, UnconfirmedRequest{ServiceChoice: ServiceChoiceWhoIs, Payload: []byte{0x10, 0x20}})
+	if !errors.Is(err, ErrSegmentationNotSupported) {
+		t.Fatalf("SendUnconfirmed error = %v, want %v", err, ErrSegmentationNotSupported)
+	}
+
+	select {
+	case frame := <-transport.ch:
+		t.Fatalf("unexpected outbound frame: %+v", frame)
+	default:
+	}
+}
+
+func TestOnInboundSegmentAckUnsupported(t *testing.T) {
+	ase, err := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4}, testCodec{}, newTestTransport())
+	if err != nil {
+		t.Fatalf("NewASE returned error: %v", err)
+	}
+
+	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x03})
+	if err != nil {
+		t.Fatalf("NewAddress returned error: %v", err)
+	}
+
+	err = ase.OnInbound(context.Background(), src, []byte{byte(PDUTypeSegmentACK), 7, byte(ServiceChoiceReadProperty)})
+	if !errors.Is(err, ErrSegmentationNotSupported) {
+		t.Fatalf("OnInbound error = %v, want %v", err, ErrSegmentationNotSupported)
+	}
+}
+
+func TestInboundConfirmedDispatchSegmentationRequired(t *testing.T) {
+	transport := newTestTransport()
+	ase, err := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4, MaxAPDUSizeAccepted: 1}, testCodec{}, transport)
+	if err != nil {
+		t.Fatalf("NewASE returned error: %v", err)
+	}
+
+	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, req ConfirmedRequest) (ServiceResult, error) {
+		return ServiceResult{Payload: []byte{0x20, 0x21}}, nil
+	}); err != nil {
+		t.Fatalf("RegisterConfirmed returned error: %v", err)
+	}
+
+	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x03})
+	if err != nil {
+		t.Fatalf("NewAddress returned error: %v", err)
+	}
+
+	err = ase.OnInbound(context.Background(), src, []byte{byte(PDUTypeConfirmedRequest), 7, byte(ServiceChoiceReadProperty), 0x10})
+	if !errors.Is(err, ErrSegmentationNotSupported) {
+		t.Fatalf("OnInbound error = %v, want %v", err, ErrSegmentationNotSupported)
+	}
+
+	select {
+	case frame := <-transport.ch:
+		t.Fatalf("unexpected outbound frame: %+v", frame)
+	default:
+	}
+}

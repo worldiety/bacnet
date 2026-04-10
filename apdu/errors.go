@@ -20,9 +20,10 @@ var (
 	ErrAPDUTimeout         = errors.New("APDU timeout")
 	ErrASEClosed           = errors.New("ASE is closed")
 
-	ErrDecodeFailure    = errors.New("decode failure")
-	ErrEncodeFailure    = errors.New("encode failure")
-	ErrTransportFailure = errors.New("transport failure")
+	ErrDecodeFailure            = errors.New("decode failure")
+	ErrEncodeFailure            = errors.New("encode failure")
+	ErrTransportFailure         = errors.New("transport failure")
+	ErrSegmentationNotSupported = errors.New("segmentation required but not supported")
 
 	ErrRemoteError  = errors.New("remote error APDU")
 	ErrRemoteReject = errors.New("remote reject APDU")

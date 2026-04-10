@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/internal/util"
 )
 
 type BVLCResultCode uint16
@@ -325,7 +326,7 @@ func (b *BdtEntry) Address() netip.AddrPort {
 
 // BroadcastDistributionMask returns a defensive copy of the subnet broadcast mask.
 func (b *BdtEntry) BroadcastDistributionMask() net.IPMask {
-	return net.IPMask(cloneBytes(b.broadcastDistributionMask))
+	return net.IPMask(util.CloneBytes(b.broadcastDistributionMask))
 }
 
 const (
@@ -344,7 +345,7 @@ func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (
 
 	entry := BdtEntry{
 		address:                   address,
-		broadcastDistributionMask: cloneBytes(broadcastDistributionMask),
+		broadcastDistributionMask: util.CloneBytes(broadcastDistributionMask),
 	}
 
 	if !entry.Valid() {
@@ -808,7 +809,7 @@ func (f *ForwardedNpdu) Decode(data []byte) error {
 		return fmt.Errorf("decode bvlc-forwarded-npdu address: %w", err)
 	}
 
-	res.bacNetNpduFromOriginatingDevice = cloneBytes(data[BVLCHeaderLen+6:])
+	res.bacNetNpduFromOriginatingDevice = util.CloneBytes(data[BVLCHeaderLen+6:])
 
 	*f = res
 
@@ -822,7 +823,7 @@ func (f *ForwardedNpdu) OriginatingDeviceAddress() netip.AddrPort {
 
 // NPDUBytes returns a defensive copy of the enclosed NPDU payload.
 func (f *ForwardedNpdu) NPDUBytes() []byte {
-	return cloneBytes(f.bacNetNpduFromOriginatingDevice)
+	return util.CloneBytes(f.bacNetNpduFromOriginatingDevice)
 }
 
 // NewForwardedNpdu constructs a validated ForwardedNpdu for BACnet/IP (IPv4).
@@ -849,7 +850,7 @@ func NewForwardedNpdu(originAddr netip.AddrPort, npdu []byte) (*ForwardedNpdu, e
 			BVLCLength:       BVLCLength(totalLen),
 		},
 		addressOfOriginatingDevice:      originAddr,
-		bacNetNpduFromOriginatingDevice: cloneBytes(npdu),
+		bacNetNpduFromOriginatingDevice: util.CloneBytes(npdu),
 	}, nil
 }
 
@@ -1275,7 +1276,7 @@ func (d *DistributeBroadcastToNetwork) Decode(data []byte) error {
 
 	*d = DistributeBroadcastToNetwork{
 		header:                          header,
-		bacnetNpduFromOriginatingDevice: cloneBytes(data[BVLCHeaderLen:]),
+		bacnetNpduFromOriginatingDevice: util.CloneBytes(data[BVLCHeaderLen:]),
 	}
 
 	return nil
@@ -1283,7 +1284,7 @@ func (d *DistributeBroadcastToNetwork) Decode(data []byte) error {
 
 // NPDUBytes returns a defensive copy of the enclosed NPDU payload.
 func (d *DistributeBroadcastToNetwork) NPDUBytes() []byte {
-	return cloneBytes(d.bacnetNpduFromOriginatingDevice)
+	return util.CloneBytes(d.bacnetNpduFromOriginatingDevice)
 }
 
 // NewDistributeBroadcastToNetwork constructs a validated DistributeBroadcastToNetwork.
@@ -1306,7 +1307,7 @@ func NewDistributeBroadcastToNetwork(frameType BVLCType, npdu []byte) (*Distribu
 			BVLCFunctionType: FunctionDistributeBroadcastToNetwork,
 			BVLCLength:       BVLCLength(totalLen),
 		},
-		bacnetNpduFromOriginatingDevice: cloneBytes(npdu),
+		bacnetNpduFromOriginatingDevice: util.CloneBytes(npdu),
 	}, nil
 }
 
@@ -1341,7 +1342,7 @@ func NewOriginalUnicastNpdu(frameType BVLCType, npdu []byte) (*OriginalUnicastNp
 			BVLCFunctionType: FunctionOriginalUnicastNPDU,
 			BVLCLength:       l,
 		},
-		bacnetNpdu: cloneBytes(npdu),
+		bacnetNpdu: util.CloneBytes(npdu),
 	}, nil
 }
 
@@ -1402,14 +1403,14 @@ func (o *OriginalUnicastNpdu) Decode(data []byte) error {
 		return fmt.Errorf("invalid function type for original-unicast-npdu: %s", res.header.BVLCFunctionType)
 	}
 
-	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
+	res.bacnetNpdu = util.CloneBytes(data[BVLCHeaderLen:])
 	*o = res
 	return nil
 }
 
 // NPDUBytes returns a defensive copy of the enclosed NPDU payload.
 func (o *OriginalUnicastNpdu) NPDUBytes() []byte {
-	return cloneBytes(o.bacnetNpdu)
+	return util.CloneBytes(o.bacnetNpdu)
 }
 
 // OriginalBroadcastNpdu is a BVLC Original-Broadcast-NPDU message (Annex J, function 0x0B).
@@ -1440,7 +1441,7 @@ func NewOriginalBroadcastNpdu(frameType BVLCType, npdu []byte) (*OriginalBroadca
 			BVLCFunctionType: FunctionOriginalBroadcastNPDU,
 			BVLCLength:       l,
 		},
-		bacnetNpdu: cloneBytes(npdu),
+		bacnetNpdu: util.CloneBytes(npdu),
 	}, nil
 }
 
@@ -1492,12 +1493,12 @@ func (o *OriginalBroadcastNpdu) Decode(data []byte) error {
 		return fmt.Errorf("invalid function type for original-broadcast-npdu: %s", res.header.BVLCFunctionType)
 	}
 
-	res.bacnetNpdu = cloneBytes(data[BVLCHeaderLen:])
+	res.bacnetNpdu = util.CloneBytes(data[BVLCHeaderLen:])
 	*o = res
 	return nil
 }
 
 // NPDUBytes returns a defensive copy of the enclosed NPDU payload.
 func (o *OriginalBroadcastNpdu) NPDUBytes() []byte {
-	return cloneBytes(o.bacnetNpdu)
+	return util.CloneBytes(o.bacnetNpdu)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/internal/util"
 )
 
 // SegmentationSupport models local segmentation capability.
@@ -170,6 +171,10 @@ func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedH
 
 // InvokeConfirmed sends a confirmed request and waits for a terminal response APDU.
 func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error) {
+	if a.segmentationRequired(len(req.Payload)) {
+		return ConfirmedAck{}, ErrSegmentationNotSupported
+	}
+
 	txID, tx, err := a.startTransaction()
 	if err != nil {
 		return ConfirmedAck{}, err
@@ -179,7 +184,7 @@ func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req C
 		Type:          PDUTypeConfirmedRequest,
 		InvokeID:      txID,
 		ServiceChoice: req.ServiceChoice,
-		Payload:       cloneBytes(req.Payload),
+		Payload:       util.CloneBytes(req.Payload),
 	})
 	if err != nil {
 		a.finishTransaction(txID)
@@ -205,17 +210,21 @@ func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req C
 		if result.err != nil {
 			return ConfirmedAck{}, result.err
 		}
-		result.ack.Payload = cloneBytes(result.ack.Payload)
+		result.ack.Payload = util.CloneBytes(result.ack.Payload)
 		return result.ack, nil
 	}
 }
 
 // SendUnconfirmed sends an unconfirmed request APDU without creating a transaction.
 func (a *aseImpl) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req UnconfirmedRequest) error {
+	if a.segmentationRequired(len(req.Payload)) {
+		return ErrSegmentationNotSupported
+	}
+
 	raw, err := a.codec.Encode(OutboundAPDU{
 		Type:          PDUTypeUnconfirmedRequest,
 		ServiceChoice: req.ServiceChoice,
-		Payload:       cloneBytes(req.Payload),
+		Payload:       util.CloneBytes(req.Payload),
 	})
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrEncodeFailure, err)
@@ -238,6 +247,8 @@ func (a *aseImpl) OnInbound(ctx context.Context, src bacnet.Address, raw []byte)
 		return a.handleConfirmedRequest(ctx, src, decoded)
 	case PDUTypeUnconfirmedRequest:
 		return a.handleUnconfirmedRequest(ctx, decoded)
+	case PDUTypeSegmentACK:
+		return ErrSegmentationNotSupported
 	case PDUTypeSimpleACK, PDUTypeComplexACK, PDUTypeError, PDUTypeReject, PDUTypeAbort:
 		return a.completeTransaction(decoded)
 	default:
@@ -286,7 +297,7 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 
 	result, err := handler(ctx, ConfirmedRequest{
 		ServiceChoice: in.ServiceChoice,
-		Payload:       cloneBytes(in.Payload),
+		Payload:       util.CloneBytes(in.Payload),
 	})
 	if err != nil {
 		return err
@@ -297,11 +308,15 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 		responseType = PDUTypeComplexACK
 	}
 
+	if a.segmentationRequired(len(result.Payload)) {
+		return ErrSegmentationNotSupported
+	}
+
 	raw, err := a.codec.Encode(OutboundAPDU{
 		Type:          responseType,
 		InvokeID:      in.InvokeID,
 		ServiceChoice: in.ServiceChoice,
-		Payload:       cloneBytes(result.Payload),
+		Payload:       util.CloneBytes(result.Payload),
 	})
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrEncodeFailure, err)
@@ -313,6 +328,13 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 	return nil
 }
 
+func (a *aseImpl) segmentationRequired(payloadLen int) bool {
+	if a.cfg.MaxAPDUSizeAccepted == 0 {
+		return false
+	}
+	return payloadLen > int(a.cfg.MaxAPDUSizeAccepted)
+}
+
 func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) error {
 	a.mu.Lock()
 	handler, ok := a.unconfirmedHandlers[in.ServiceChoice]
@@ -320,7 +342,7 @@ func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) 
 	if !ok {
 		return ErrHandlerNotFound
 	}
-	return handler(ctx, UnconfirmedRequest{ServiceChoice: in.ServiceChoice, Payload: cloneBytes(in.Payload)})
+	return handler(ctx, UnconfirmedRequest{ServiceChoice: in.ServiceChoice, Payload: util.CloneBytes(in.Payload)})
 }
 
 func (a *aseImpl) completeTransaction(in InboundAPDU) error {
@@ -341,7 +363,7 @@ func (a *aseImpl) completeTransaction(in InboundAPDU) error {
 			Type:          in.Type,
 			InvokeID:      in.InvokeID,
 			ServiceChoice: in.ServiceChoice,
-			Payload:       cloneBytes(in.Payload),
+			Payload:       util.CloneBytes(in.Payload),
 		}
 	case PDUTypeError:
 		result.err = ErrRemoteError

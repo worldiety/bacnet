@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/internal/util"
 )
 
 // minNpduLen is the minimum wire size of an NPDU (version byte + NPCI byte).
@@ -238,7 +239,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 			if i+int(dlen) > len(data) {
 				return fmt.Errorf("%w: truncated DADR", ErrDecodeFailure)
 			}
-			res.dadr = cloneBytes(data[i : i+int(dlen)])
+			res.dadr = util.CloneBytes(data[i : i+int(dlen)])
 			i += int(dlen)
 		}
 	}
@@ -262,7 +263,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 		if i+int(slen) > len(data) {
 			return fmt.Errorf("%w: truncated SADR", ErrDecodeFailure)
 		}
-		res.sadr = cloneBytes(data[i : i+int(slen)])
+		res.sadr = util.CloneBytes(data[i : i+int(slen)])
 		i += int(slen)
 	}
 
@@ -297,7 +298,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 
 	// Remaining bytes are the APDU or NL message data.
 	if i < len(data) {
-		res.apdu = cloneBytes(data[i:])
+		res.apdu = util.CloneBytes(data[i:])
 	}
 
 	*n = res
@@ -326,7 +327,7 @@ func NewLocalAPDU(priority bacnet.NetworkPriority, expectingReply bool, apdu []b
 	return &NetworkLayerProtocolDataUnit{
 		protocolVersion: bacnet.ProtocolVersion,
 		flags:           flags,
-		apdu:            cloneBytes(apdu),
+		apdu:            util.CloneBytes(apdu),
 	}, nil
 }
 
@@ -354,7 +355,7 @@ func NewRoutedAPDU(
 	dlen := UltimateDestinationNetworkNumberMacAddressLength(len(dadr))
 	var dadrCopy UltimateDestinationMacLayerAddress
 	if len(dadr) > 0 {
-		dadrCopy = cloneBytes(dadr)
+		dadrCopy = util.CloneBytes(dadr)
 	}
 
 	flags := NPCIFieldsFlags(priority) | destinationSpecifierMask
@@ -369,7 +370,7 @@ func NewRoutedAPDU(
 		dlen:            &dlen,
 		dadr:            dadrCopy,
 		hopCount:        &hopCount,
-		apdu:            cloneBytes(apdu),
+		apdu:            util.CloneBytes(apdu),
 	}, nil
 }
 
@@ -389,7 +390,7 @@ func NewNetworkLayerMessage(messageType uint8, data []byte, priority bacnet.Netw
 		protocolVersion: bacnet.ProtocolVersion,
 		flags:           NPCIFieldsFlags(priority) | isNetworkLayerMessageMask,
 		messageType:     &mt,
-		apdu:            cloneBytes(data),
+		apdu:            util.CloneBytes(data),
 	}, nil
 }
 
@@ -411,7 +412,7 @@ func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data 
 		flags:           NPCIFieldsFlags(priority) | isNetworkLayerMessageMask,
 		messageType:     &mt,
 		vendorId:        &vid,
-		apdu:            cloneBytes(data),
+		apdu:            util.CloneBytes(data),
 	}, nil
 }
 
@@ -464,7 +465,7 @@ func (n *NetworkLayerProtocolDataUnit) DADR() UltimateDestinationMacLayerAddress
 	if n.dadr == nil {
 		return nil
 	}
-	return cloneBytes(n.dadr)
+	return util.CloneBytes(n.dadr)
 }
 
 // HopCount returns the hop count, or nil if the destination specifier is absent.
@@ -491,7 +492,7 @@ func (n *NetworkLayerProtocolDataUnit) SADR() OriginalSourceMacLayerAddress {
 	if n.sadr == nil {
 		return nil
 	}
-	return cloneBytes(n.sadr)
+	return util.CloneBytes(n.sadr)
 }
 
 // MessageType returns the network-layer message type byte, or nil if this NPDU
@@ -518,7 +519,7 @@ func (n *NetworkLayerProtocolDataUnit) APDUBytes() []byte {
 	if n.apdu == nil {
 		return nil
 	}
-	return cloneBytes(n.apdu)
+	return util.CloneBytes(n.apdu)
 }
 
 // --- Types and constants ---
@@ -545,9 +546,3 @@ type OriginalSourceNetworkNumber uint16
 type OriginalSourceNetworkNumberMacAddressLength uint8
 type OriginalSourceMacLayerAddress []byte
 type LocalNetworkSourceMacLayerAddress []byte
-
-func cloneBytes(in []byte) []byte {
-	out := make([]byte, len(in))
-	copy(out, in)
-	return out
-}

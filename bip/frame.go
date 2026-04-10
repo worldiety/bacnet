@@ -5,6 +5,7 @@ import (
 	"net/netip"
 
 	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/internal/util"
 )
 
 // Frame is a decoded Annex J BVLC frame.
@@ -28,7 +29,7 @@ func NewFrameWithType(frameType BVLCType, function BVLCFunctionType, payload []b
 		return Frame{}, bacnet.NewValidationError("length", len(payload)+BVLCHeaderLen, ErrInvalidLength)
 	}
 
-	return Frame{Type: frameType, Function: function, payload: cloneBytes(payload)}, nil
+	return Frame{Type: frameType, Function: function, payload: util.CloneBytes(payload)}, nil
 }
 
 // NewFrameForAddress constructs a BVLC frame type from IPv4/IPv6 address family.
@@ -64,7 +65,7 @@ func DecodeFrame(raw []byte) (Frame, error) {
 	return Frame{
 		Type:     frameType,
 		Function: function,
-		payload:  cloneBytes(raw[BVLCHeaderLen:]),
+		payload:  util.CloneBytes(raw[BVLCHeaderLen:]),
 	}, nil
 }
 
@@ -92,11 +93,5 @@ func (f Frame) Encode() ([]byte, error) {
 
 // PayloadBytes returns a defensive copy of the frame payload.
 func (f Frame) PayloadBytes() []byte {
-	return cloneBytes(f.payload)
-}
-
-func cloneBytes(in []byte) []byte {
-	out := make([]byte, len(in))
-	copy(out, in)
-	return out
+	return util.CloneBytes(f.payload)
 }
