@@ -133,10 +133,7 @@ func (b *bbmdImpl) HandleRegisterForeignDevice(src netip.AddrPort, req *Register
 	}
 
 	ttl := req.TTL()
-	gracePeriod := int(ttl) + 30
-	if gracePeriod > math.MaxUint16 {
-		gracePeriod = math.MaxUint16
-	}
+	gracePeriod := min(int(ttl)+30, math.MaxUint16)
 
 	b.mu.Lock()
 	b.fdt[src] = bbmdFdtEntry{

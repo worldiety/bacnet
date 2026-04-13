@@ -237,11 +237,7 @@ func NewFdtEntry(address netip.AddrPort, ttl TTL) (*FdtEntry, error) {
 		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
 	}
 
-	remainingTtl := int(ttl) + 30
-
-	if remainingTtl > math.MaxUint16 {
-		remainingTtl = math.MaxUint16
-	}
+	remainingTtl := min(int(ttl)+30, math.MaxUint16)
 
 	entry := &FdtEntry{
 		address:       address,

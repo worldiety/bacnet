@@ -1,19 +1,32 @@
 # apdu starter skeleton
 
-This package provides a concrete starter skeleton for a BACnet Application
-Service Element (ASE):
+This package provides the BACnet application-layer scaffold used by the root
+library runtime.
 
-- APDU envelope types and service choice constants
-- ASE orchestration with confirmed transaction tracking
-- Clause 5.4 application protocol state-machine scaffolding for confirmed client/server flows
-- Confirmed and unconfirmed handler registration/dispatch
-- Pluggable `Codec` and `Transport` interfaces for integration
-- Unit tests with a tiny in-memory codec/transport harness
+## implemented foundation
 
-## status
+- Public `ASE` interface with `NewASE(cfg, codec, transport)` constructor
+- Pluggable `Codec` and `Transport` interfaces to keep wire format and I/O configurable
+- Confirmed invoke lifecycle (`InvokeConfirmed`) with invoke ID tracking, timeout, and close handling
+- Inbound dispatch via `OnInbound` for confirmed, unconfirmed, and terminal ACK/error/reject/abort PDUs
+- `UserElement` wrapper (`NewUserElement`) for B-X.request/indication/response/confirm style integration
+- APDU envelope and ICI helper types (`types.go`, `ici.go`) with BACnet-style `String()` fallbacks
 
-This is intentionally a starter model, not a full BACnet APDU wire
-implementation yet. It focuses on extension points and behavior scaffolding.
+## state-machine scaffold
+
+Confirmed transactions are modeled with internal clause 5.4 state-machine types
+(`confirmedClientMachine`, `confirmedServerMachine`):
+
+- Client path: `idle -> await-response -> completed|aborted`
+- Server path: `idle -> await-response -> completed|aborted`
+- Terminal inbound PDUs map to explicit machine events and actions
+- Segmented event paths are declared and tracked, but currently return `ErrSegmentationNotSupported`
+
+## current limits
+
+- Focused on unsegmented confirmed/unconfirmed flows
+- Segment ACK and segmented response transitions are reserved for future work
+- This package is a prototype scaffold; API and behavior can evolve as coverage expands
 
 ## run tests
 

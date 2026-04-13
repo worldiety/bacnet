@@ -1,9 +1,9 @@
 # bacnet
 
 `bacnet` is a lightweight Go foundation for building BACnet/IP applications.
-It currently provides the root BACnet types and addressing primitives plus
-active `bip`, `apdu`, and `npdu` packages for BACnet/IP BVLC framing,
-application-layer dispatch, and network-layer NPDU encode/decode scaffolding.
+It currently provides root BACnet types and addressing primitives plus active
+`bip`, `apdu`, and `npdu` packages for BVLC framing, APDU orchestration,
+and NPDU encode/decode scaffolding.
 
 ## Goals
 
@@ -25,9 +25,10 @@ The current implementation includes:
 - Core BACnet types in `types.go`
 - Validation and sentinel errors in `errors.go`
 - Basic station/network addressing in `address.go`
-- `bip/` for BACnet/IP and BACnet/IP6 BVLC framing, UDP datagram transport, BBMD table handling, and foreign device registration support
-- `apdu/` for ASE dispatch, confirmed invoke tracking, and user-element abstractions
+- `bip/` for BACnet/IP and BACnet/IP6 BVLC frame encode/decode, all Annex J BVLC function structs, UDP datagram transport, BBMD handling, and IPv4 foreign-device support
+- `apdu/` for interface-first ASE dispatch, confirmed invoke tracking, clause 5.4 state-machine scaffolding, and user-element wrappers
 - `npdu/` for BACnet NPDU encode/decode, routed/local APDU constructors, and network-layer-message constructors
+- `internal/util/` for shared defensive-copy helpers used across packages
 - Unit tests across the implemented packages
 
 ## Project structure
@@ -46,11 +47,11 @@ The current implementation includes:
 ├── types.go
 ├── types_test.go
 ├── apdu/        (active: BACnet application layer scaffold)
-├── bip/         (active: BACnet/IP BVLC + transport scaffold)
+├── bip/         (active: BACnet/IP BVLC + transport + BBMD scaffold)
 ├── encoding/    (planned: BACnet tag/value encoding)
 ├── npdu/        (active: BACnet network layer scaffold)
 ├── lpdu/        (planned: BACnet IP link layer scaffold)
-├── internal/    (planned: non-public helpers)
+├── internal/    (active: non-public helpers; `internal/util` in active use)
 ├── testdata/    (planned: packet fixtures)
 └── examples/    (deferred until API is stable)
 ```
@@ -58,6 +59,9 @@ The current implementation includes:
 The current implementation includes the root `bacnet` package together with active
 `bip`, `apdu`, and `npdu` scaffolds. Planned directories remain extension points
 for additional BACnet/IP layers.
+
+The project is in a prototype phase: APIs are usable for experimentation and tests,
+but may change as BACnet coverage expands.
 
 ## Example
 
