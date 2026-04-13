@@ -24,19 +24,24 @@ func (m *confirmedServerMachine) State() machineState {
 func (m *confirmedServerMachine) Handle(event machineEvent) (machineAction, error) {
 	switch m.state {
 	case machineStateIdle:
-		if event == machineEventInboundConfirmedRequest {
+		switch event {
+		case machineEventInboundConfirmedRequest:
 			m.state = machineStateAwaitResponse
 			return machineActionNone, nil
+		default:
+			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 		}
 	case machineStateAwaitResponse:
 		switch event {
-		case machineEventResponseReadySimpleACK:
+		case machineEventResponseReadySimpleACK,
+			machineEventResponseReadyComplexACK:
+			action, _ := confirmedServerResponseNonSegmentedEvents[event]
 			m.state = machineStateCompleted
-			return machineActionSendSimpleACK, nil
-		case machineEventResponseReadyComplexACK:
-			m.state = machineStateCompleted
-			return machineActionSendComplexACK, nil
+			return action, nil
 		case machineEventResponseRequiresSegmentation:
+			if _, ok := confirmedServerResponseSegmentedEvents[event]; !ok {
+				return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+			}
 			return machineActionNone, ErrSegmentationNotSupported
 		case machineEventHandlerError:
 			m.state = machineStateAborted
@@ -44,16 +49,30 @@ func (m *confirmedServerMachine) Handle(event machineEvent) (machineAction, erro
 		case machineEventClose:
 			m.state = machineStateAborted
 			return machineActionFailClosed, nil
+		default:
+			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 		}
 	case machineStateAwaitSegmentACK:
 		switch event {
 		case machineEventInboundSegmentACK:
+			if _, ok := confirmedClientInboundSegmentedEvents[event]; !ok {
+				return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+			}
 			return machineActionNone, ErrSegmentationNotSupported
 		case machineEventClose:
 			m.state = machineStateAborted
 			return machineActionFailClosed, nil
+		default:
+			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 		}
+	case machineStateCompleted:
+		switch event {
+		case machineEventClose:
+			return machineActionNone, nil
+		default:
+			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+		}
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 	}
-
-	return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 }

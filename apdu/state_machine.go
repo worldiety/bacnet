@@ -81,6 +81,49 @@ const (
 	machineEventClose
 )
 
+type clientInboundNonSegmentedTransition struct {
+	nextState machineState
+	action    machineAction
+}
+
+var confirmedClientInboundNonSegmentedEvents = map[machineEvent]clientInboundNonSegmentedTransition{
+	machineEventInboundSimpleACK: {
+		nextState: machineStateCompleted,
+		action:    machineActionDeliverSimpleACK,
+	},
+	machineEventInboundComplexACK: {
+		nextState: machineStateCompleted,
+		action:    machineActionDeliverComplexACK,
+	},
+	machineEventInboundError: {
+		nextState: machineStateAborted,
+		action:    machineActionDeliverError,
+	},
+	machineEventInboundReject: {
+		nextState: machineStateAborted,
+		action:    machineActionDeliverReject,
+	},
+	machineEventInboundAbort: {
+		nextState: machineStateAborted,
+		action:    machineActionDeliverAbort,
+	},
+}
+
+// Segmented events are tracked explicitly for future clause 5.4 work.
+var confirmedClientInboundSegmentedEvents = map[machineEvent]struct{}{
+	machineEventInboundSegmentACK: {},
+}
+
+var confirmedServerResponseNonSegmentedEvents = map[machineEvent]machineAction{
+	machineEventResponseReadySimpleACK:  machineActionSendSimpleACK,
+	machineEventResponseReadyComplexACK: machineActionSendComplexACK,
+}
+
+// Segmented events are tracked explicitly for future clause 5.4 work.
+var confirmedServerResponseSegmentedEvents = map[machineEvent]struct{}{
+	machineEventResponseRequiresSegmentation: {},
+}
+
 func (e machineEvent) String() string {
 	switch e {
 	case machineEventSendConfirmedRequest:
@@ -114,6 +157,11 @@ func (e machineEvent) String() string {
 	default:
 		return fmt.Sprintf("machine-event(%d)", e)
 	}
+}
+
+func transitionForConfirmedClientInboundNonSegmentedEvent(event machineEvent) (clientInboundNonSegmentedTransition, bool) {
+	transition, ok := confirmedClientInboundNonSegmentedEvents[event]
+	return transition, ok
 }
 
 type machineAction byte
