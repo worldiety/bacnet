@@ -81,7 +81,80 @@ const (
 	machineEventClose
 )
 
+// segmentedTransactionVariables reserves the clause 5.4.1 bookkeeping needed
+// for segmented confirmed-service exchanges.
+//
+// The current implementation does not execute segmented transitions yet, so
+// these variables remain zero-value placeholders until segmentation support is
+// implemented.
+type segmentedTransactionVariables struct {
+	sequenceNumber        uint8
+	initialSequenceNumber uint8
+	lastSequenceNumber    uint8
+	proposedWindowSize    uint8
+	actualWindowSize      uint8
+	retryCount            uint8
+	segmentRetryCount     uint8
+	sentAllSegments       bool
+	segmentCount          uint16
+}
+
+// confirmedClientTransactionVariables stores the per-transaction state-machine
+// variables used by the confirmed client path.
+type confirmedClientTransactionVariables struct {
+	invokeID              InvokeID
+	segmentation          SegmentationSupport
+	maxSegmentsAccepted   MaxSegmentsAccepted
+	maxAPDUSizeAccepted   uint16
+	requestPayloadLength  int
+	responsePayloadLength int
+	responsePDUType       PDUType
+	responsePDUTypeSet    bool
+	confirmResult         ConfirmResult
+	confirmResultSet      bool
+	segmented             segmentedTransactionVariables
+}
+
+// confirmedServerTransactionVariables stores the per-transaction state-machine
+// variables used by the confirmed server path.
+type confirmedServerTransactionVariables struct {
+	invokeID                     InvokeID
+	requesterSegmentation        SegmentationSupport
+	requesterMaxSegmentsAccepted MaxSegmentsAccepted
+	requesterMaxAPDUSizeAccepted uint16
+	segmentation                 SegmentationSupport
+	maxAPDUSizeAccepted          uint16
+	requestPayloadLength         int
+	responsePayloadLength        int
+	responsePDUType              PDUType
+	responsePDUTypeSet           bool
+	segmented                    segmentedTransactionVariables
+}
+
+type confirmedClientMachineConfig struct {
+	invokeID             InvokeID
+	segmentation         SegmentationSupport
+	maxSegmentsAccepted  MaxSegmentsAccepted
+	maxAPDUSizeAccepted  uint16
+	requestPayloadLength int
+}
+
+type confirmedServerMachineConfig struct {
+	invokeID                     InvokeID
+	requesterSegmentation        SegmentationSupport
+	requesterMaxSegmentsAccepted MaxSegmentsAccepted
+	requesterMaxAPDUSizeAccepted uint16
+	segmentation                 SegmentationSupport
+	maxAPDUSizeAccepted          uint16
+	requestPayloadLength         int
+}
+
 type clientInboundNonSegmentedTransition struct {
+	nextState machineState
+	action    machineAction
+}
+
+type serverResponseNonSegmentedTransition struct {
 	nextState machineState
 	action    machineAction
 }
@@ -114,14 +187,38 @@ var confirmedClientInboundSegmentedEvents = map[machineEvent]struct{}{
 	machineEventInboundSegmentACK: {},
 }
 
-var confirmedServerResponseNonSegmentedEvents = map[machineEvent]machineAction{
-	machineEventResponseReadySimpleACK:  machineActionSendSimpleACK,
-	machineEventResponseReadyComplexACK: machineActionSendComplexACK,
+var confirmedServerResponseNonSegmentedTransitions = map[machineEvent]serverResponseNonSegmentedTransition{
+	machineEventResponseReadySimpleACK: {
+		nextState: machineStateCompleted,
+		action:    machineActionSendSimpleACK,
+	},
+	machineEventResponseReadyComplexACK: {
+		nextState: machineStateCompleted,
+		action:    machineActionSendComplexACK,
+	},
 }
 
 // Segmented events are tracked explicitly for future clause 5.4 work.
 var confirmedServerResponseSegmentedEvents = map[machineEvent]struct{}{
 	machineEventResponseRequiresSegmentation: {},
+}
+
+// Segmented events are tracked explicitly for future clause 5.4 work.
+var confirmedServerInboundSegmentedEvents = map[machineEvent]struct{}{
+	machineEventInboundSegmentACK: {},
+}
+
+var inboundTerminalPDUNonSegmentedEvents = map[PDUType]machineEvent{
+	PDUTypeSimpleACK:  machineEventInboundSimpleACK,
+	PDUTypeComplexACK: machineEventInboundComplexACK,
+	PDUTypeError:      machineEventInboundError,
+	PDUTypeReject:     machineEventInboundReject,
+	PDUTypeAbort:      machineEventInboundAbort,
+}
+
+// Segmented terminal PDU mappings are declared for future support.
+var inboundTerminalPDUSegmentedEvents = map[PDUType]machineEvent{
+	PDUTypeSegmentACK: machineEventInboundSegmentACK,
 }
 
 func (e machineEvent) String() string {
@@ -161,6 +258,11 @@ func (e machineEvent) String() string {
 
 func transitionForConfirmedClientInboundNonSegmentedEvent(event machineEvent) (clientInboundNonSegmentedTransition, bool) {
 	transition, ok := confirmedClientInboundNonSegmentedEvents[event]
+	return transition, ok
+}
+
+func transitionForConfirmedServerResponseNonSegmentedEvent(event machineEvent) (serverResponseNonSegmentedTransition, bool) {
+	transition, ok := confirmedServerResponseNonSegmentedTransitions[event]
 	return transition, ok
 }
 
@@ -207,20 +309,12 @@ func (a machineAction) String() string {
 }
 
 func machineEventForInboundTerminalPDU(pduType PDUType) (machineEvent, error) {
-	switch pduType {
-	case PDUTypeSimpleACK:
-		return machineEventInboundSimpleACK, nil
-	case PDUTypeComplexACK:
-		return machineEventInboundComplexACK, nil
-	case PDUTypeError:
-		return machineEventInboundError, nil
-	case PDUTypeReject:
-		return machineEventInboundReject, nil
-	case PDUTypeAbort:
-		return machineEventInboundAbort, nil
-	default:
+	event, ok := inboundTerminalPDUNonSegmentedEvents[pduType]
+	if !ok {
 		return 0, ErrInvalidPDUType
 	}
+
+	return event, nil
 }
 
 func invalidStateTransition(role machineRole, state machineState, event machineEvent) error {

@@ -179,7 +179,7 @@ func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req C
 		return ConfirmedAck{}, ErrSegmentationNotSupported
 	}
 
-	txID, tx, err := a.startTransaction()
+	txID, tx, err := a.startTransaction(len(req.Payload))
 	if err != nil {
 		return ConfirmedAck{}, err
 	}
@@ -270,7 +270,7 @@ func (a *aseImpl) OnInbound(ctx context.Context, src bacnet.Address, raw []byte)
 	}
 }
 
-func (a *aseImpl) startTransaction() (InvokeID, transaction, error) {
+func (a *aseImpl) startTransaction(requestPayloadLength int) (InvokeID, transaction, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -280,6 +280,9 @@ func (a *aseImpl) startTransaction() (InvokeID, transaction, error) {
 	if len(a.transactions) >= a.cfg.MaxConcurrentInvokes {
 		return 0, transaction{}, ErrNoInvokeIDAvailable
 	}
+	if requestPayloadLength < 0 {
+		requestPayloadLength = 0
+	}
 
 	for range 256 {
 		id := a.nextInvokeID
@@ -287,7 +290,16 @@ func (a *aseImpl) startTransaction() (InvokeID, transaction, error) {
 		if _, exists := a.transactions[id]; exists {
 			continue
 		}
-		tx := transaction{done: make(chan transactionResult, 1), stateMachine: newConfirmedClientMachine()}
+		tx := transaction{
+			done: make(chan transactionResult, 1),
+			stateMachine: newConfirmedClientMachineWithConfig(confirmedClientMachineConfig{
+				invokeID:             id,
+				segmentation:         a.cfg.Segmentation,
+				maxSegmentsAccepted:  MaxSegmentsUnspecified,
+				maxAPDUSizeAccepted:  a.cfg.MaxAPDUSizeAccepted,
+				requestPayloadLength: requestPayloadLength,
+			}),
+		}
 		a.transactions[id] = tx
 		return id, tx, nil
 	}
@@ -302,7 +314,15 @@ func (a *aseImpl) finishTransaction(id InvokeID) {
 }
 
 func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address, in InboundAPDU) error {
-	machine := newConfirmedServerMachine()
+	machine := newConfirmedServerMachineWithConfig(confirmedServerMachineConfig{
+		invokeID:                     in.InvokeID,
+		requesterSegmentation:        SegmentationNo,
+		requesterMaxSegmentsAccepted: MaxSegmentsUnspecified,
+		requesterMaxAPDUSizeAccepted: 0,
+		segmentation:                 a.cfg.Segmentation,
+		maxAPDUSizeAccepted:          a.cfg.MaxAPDUSizeAccepted,
+		requestPayloadLength:         len(in.Payload),
+	})
 	if _, err := machine.Handle(machineEventInboundConfirmedRequest); err != nil {
 		return err
 	}
@@ -333,6 +353,9 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 	if len(result.Payload) > 0 {
 		responseType = PDUTypeComplexACK
 		event = machineEventResponseReadyComplexACK
+	}
+	if err := machine.recordResponsePDU(responseType, len(result.Payload)); err != nil {
+		return bacnet.NewValidationError("pdu type", responseType, ErrInvalidPDUType)
 	}
 	action, err := machine.Handle(event)
 	if err != nil {
@@ -389,6 +412,11 @@ func (a *aseImpl) completeTransaction(in InboundAPDU) error {
 	event, err := machineEventForInboundTerminalPDU(in.Type)
 	if err != nil {
 		return bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+	}
+	if machine, ok := tx.stateMachine.(*confirmedClientMachine); ok {
+		if err := machine.recordInboundTerminalPDU(in.Type, len(in.Payload)); err != nil {
+			return bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+		}
 	}
 	action, err := tx.stateMachine.Handle(event)
 	if err != nil {
