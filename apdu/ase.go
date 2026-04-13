@@ -85,7 +85,8 @@ type aseImpl struct {
 }
 
 type transaction struct {
-	done chan transactionResult
+	done         chan transactionResult
+	stateMachine protocolStateMachine
 }
 
 type transactionResult struct {
@@ -131,6 +132,9 @@ func (a *aseImpl) Close() error {
 	a.mu.Unlock()
 
 	for _, tx := range pending {
+		if tx.stateMachine != nil {
+			_, _ = tx.stateMachine.Handle(machineEventClose)
+		}
 		tx.done <- transactionResult{err: ErrASEClosed}
 	}
 
@@ -179,6 +183,10 @@ func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req C
 	if err != nil {
 		return ConfirmedAck{}, err
 	}
+	if _, err := tx.stateMachine.Handle(machineEventSendConfirmedRequest); err != nil {
+		a.finishTransaction(txID)
+		return ConfirmedAck{}, err
+	}
 
 	raw, err := a.codec.Encode(OutboundAPDU{
 		Type:          PDUTypeConfirmedRequest,
@@ -201,9 +209,15 @@ func (a *aseImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req C
 
 	select {
 	case <-ctx.Done():
+		if tx.stateMachine != nil {
+			_, _ = tx.stateMachine.Handle(machineEventClose)
+		}
 		a.finishTransaction(txID)
 		return ConfirmedAck{}, ctx.Err()
 	case <-timer.C:
+		if tx.stateMachine != nil {
+			_, _ = tx.stateMachine.Handle(machineEventTimeout)
+		}
 		a.finishTransaction(txID)
 		return ConfirmedAck{}, ErrAPDUTimeout
 	case result := <-tx.done:
@@ -273,7 +287,7 @@ func (a *aseImpl) startTransaction() (InvokeID, transaction, error) {
 		if _, exists := a.transactions[id]; exists {
 			continue
 		}
-		tx := transaction{done: make(chan transactionResult, 1)}
+		tx := transaction{done: make(chan transactionResult, 1), stateMachine: newConfirmedClientMachine()}
 		a.transactions[id] = tx
 		return id, tx, nil
 	}
@@ -288,6 +302,11 @@ func (a *aseImpl) finishTransaction(id InvokeID) {
 }
 
 func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address, in InboundAPDU) error {
+	machine := newConfirmedServerMachine()
+	if _, err := machine.Handle(machineEventInboundConfirmedRequest); err != nil {
+		return err
+	}
+
 	a.mu.Lock()
 	handler, ok := a.confirmedHandlers[in.ServiceChoice]
 	a.mu.Unlock()
@@ -300,16 +319,27 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 		Payload:       util.CloneBytes(in.Payload),
 	})
 	if err != nil {
+		_, _ = machine.Handle(machineEventHandlerError)
 		return err
 	}
 
-	responseType := PDUTypeSimpleACK
-	if len(result.Payload) > 0 {
-		responseType = PDUTypeComplexACK
+	if a.segmentationRequired(len(result.Payload)) {
+		_, _ = machine.Handle(machineEventResponseRequiresSegmentation)
+		return ErrSegmentationNotSupported
 	}
 
-	if a.segmentationRequired(len(result.Payload)) {
-		return ErrSegmentationNotSupported
+	responseType := PDUTypeSimpleACK
+	event := machineEventResponseReadySimpleACK
+	if len(result.Payload) > 0 {
+		responseType = PDUTypeComplexACK
+		event = machineEventResponseReadyComplexACK
+	}
+	action, err := machine.Handle(event)
+	if err != nil {
+		return err
+	}
+	if action != machineActionSendSimpleACK && action != machineActionSendComplexACK {
+		return invalidStateTransition(machine.Role(), machine.State(), event)
 	}
 
 	raw, err := a.codec.Encode(OutboundAPDU{
@@ -356,23 +386,32 @@ func (a *aseImpl) completeTransaction(in InboundAPDU) error {
 		return ErrTransactionNotFound
 	}
 
+	event, err := machineEventForInboundTerminalPDU(in.Type)
+	if err != nil {
+		return bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+	}
+	action, err := tx.stateMachine.Handle(event)
+	if err != nil {
+		return err
+	}
+
 	result := transactionResult{}
-	switch in.Type {
-	case PDUTypeSimpleACK, PDUTypeComplexACK:
+	switch action {
+	case machineActionDeliverSimpleACK, machineActionDeliverComplexACK:
 		result.ack = ConfirmedAck{
 			Type:          in.Type,
 			InvokeID:      in.InvokeID,
 			ServiceChoice: in.ServiceChoice,
 			Payload:       util.CloneBytes(in.Payload),
 		}
-	case PDUTypeError:
+	case machineActionDeliverError:
 		result.err = ErrRemoteError
-	case PDUTypeReject:
+	case machineActionDeliverReject:
 		result.err = ErrRemoteReject
-	case PDUTypeAbort:
+	case machineActionDeliverAbort:
 		result.err = ErrRemoteAbort
 	default:
-		result.err = bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+		return invalidStateTransition(tx.stateMachine.Role(), tx.stateMachine.State(), event)
 	}
 
 	tx.done <- result

@@ -5,6 +5,7 @@ Service Element (ASE):
 
 - APDU envelope types and service choice constants
 - ASE orchestration with confirmed transaction tracking
+- Clause 5.4 application protocol state-machine scaffolding for confirmed client/server flows
 - Confirmed and unconfirmed handler registration/dispatch
 - Pluggable `Codec` and `Transport` interfaces for integration
 - Unit tests with a tiny in-memory codec/transport harness

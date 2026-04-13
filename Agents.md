@@ -29,6 +29,7 @@ The Go module path is `go.wdy.de/bacnet`.
 - The current baseline is standard-library-only (`go.mod` has no external module requirements); preserve that unless a reviewed exception is explicitly approved.
 
 ## Development requirements
+- The project is still in the prototype phase, so the API is not yet stable and may be changed when needed.
 - The project must be developed using best practices for Go development, including proper error handling.
 - The project should include unit tests for all major functionality, with a goal of achieving at least 80% code coverage.
 - Functions should be annotated with comments that explain their purpose, parameters, preconditions, and return values.

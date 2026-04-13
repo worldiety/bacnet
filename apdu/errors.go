@@ -8,8 +8,9 @@ var (
 	ErrNilTransport     = errors.New("transport is required")
 	ErrNilASE           = errors.New("ASE is required")
 
-	ErrInvalidPDUType       = errors.New("invalid PDU type")
-	ErrInvalidServiceChoice = errors.New("invalid service choice")
+	ErrInvalidPDUType         = errors.New("invalid PDU type")
+	ErrInvalidServiceChoice   = errors.New("invalid service choice")
+	ErrInvalidStateTransition = errors.New("invalid application protocol state transition")
 
 	ErrHandlerAlreadyRegistered = errors.New("handler already registered")
 	ErrHandlerNotFound          = errors.New("handler not found")
