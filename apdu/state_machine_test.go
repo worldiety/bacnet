@@ -471,4 +471,214 @@ func TestSegmentedEventVariables(t *testing.T) {
 	}
 }
 
+func TestUnconfirmedClientMachineTransitions(t *testing.T) {
+	tests := []struct {
+		name       string
+		events     []machineEvent
+		wantState  machineState
+		wantAction machineAction
+		wantErr    error
+	}{
+		{
+			name:       "send completes immediately",
+			events:     []machineEvent{machineEventSendUnconfirmedRequest},
+			wantState:  machineStateCompleted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "close in completed state is noop",
+			events:     []machineEvent{machineEventSendUnconfirmedRequest, machineEventClose},
+			wantState:  machineStateCompleted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "terminal event before send is invalid",
+			events:     []machineEvent{machineEventInboundSimpleACK},
+			wantState:  machineStateIdle,
+			wantAction: machineActionNone,
+			wantErr:    ErrInvalidStateTransition,
+		},
+		{
+			name:       "confirmed request event in idle is invalid",
+			events:     []machineEvent{machineEventSendConfirmedRequest},
+			wantState:  machineStateIdle,
+			wantAction: machineActionNone,
+			wantErr:    ErrInvalidStateTransition,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			machine := newUnconfirmedClientMachine()
+			var gotAction machineAction
+			var err error
+
+			for _, event := range tt.events {
+				gotAction, err = machine.Handle(event)
+				if err != nil {
+					break
+				}
+			}
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Handle() error = %v, want %v", err, tt.wantErr)
+			}
+			if machine.State() != tt.wantState {
+				t.Fatalf("State() = %v, want %v", machine.State(), tt.wantState)
+			}
+			if gotAction != tt.wantAction {
+				t.Fatalf("action = %v, want %v", gotAction, tt.wantAction)
+			}
+		})
+	}
+}
+
+func TestUnconfirmedServerMachineTransitions(t *testing.T) {
+	tests := []struct {
+		name       string
+		events     []machineEvent
+		wantState  machineState
+		wantAction machineAction
+		wantErr    error
+	}{
+		{
+			name:       "receive then handler done completes",
+			events:     []machineEvent{machineEventInboundUnconfirmedRequest, machineEventHandlerDone},
+			wantState:  machineStateCompleted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "receive then handler error aborts",
+			events:     []machineEvent{machineEventInboundUnconfirmedRequest, machineEventHandlerError},
+			wantState:  machineStateAborted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "receive then close aborts with fail-closed action",
+			events:     []machineEvent{machineEventInboundUnconfirmedRequest, machineEventClose},
+			wantState:  machineStateAborted,
+			wantAction: machineActionFailClosed,
+		},
+		{
+			name:       "close in completed state is noop",
+			events:     []machineEvent{machineEventInboundUnconfirmedRequest, machineEventHandlerDone, machineEventClose},
+			wantState:  machineStateCompleted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "close in aborted state is noop",
+			events:     []machineEvent{machineEventInboundUnconfirmedRequest, machineEventHandlerError, machineEventClose},
+			wantState:  machineStateAborted,
+			wantAction: machineActionNone,
+		},
+		{
+			name:       "handler event before receive is invalid",
+			events:     []machineEvent{machineEventHandlerDone},
+			wantState:  machineStateIdle,
+			wantAction: machineActionNone,
+			wantErr:    ErrInvalidStateTransition,
+		},
+		{
+			name:       "confirmed request event in idle is invalid",
+			events:     []machineEvent{machineEventInboundConfirmedRequest},
+			wantState:  machineStateIdle,
+			wantAction: machineActionNone,
+			wantErr:    ErrInvalidStateTransition,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			machine := newUnconfirmedServerMachine()
+			var gotAction machineAction
+			var err error
+
+			for _, event := range tt.events {
+				gotAction, err = machine.Handle(event)
+				if err != nil {
+					break
+				}
+			}
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Handle() error = %v, want %v", err, tt.wantErr)
+			}
+			if machine.State() != tt.wantState {
+				t.Fatalf("State() = %v, want %v", machine.State(), tt.wantState)
+			}
+			if gotAction != tt.wantAction {
+				t.Fatalf("action = %v, want %v", gotAction, tt.wantAction)
+			}
+		})
+	}
+}
+
+func TestNewUnconfirmedClientMachineWithConfigInitializesVariables(t *testing.T) {
+	machine := newUnconfirmedClientMachineWithConfig(unconfirmedClientMachineConfig{
+		requestPayloadLength: 20,
+	})
+
+	if machine.State() != machineStateIdle {
+		t.Fatalf("State() = %v, want %v", machine.State(), machineStateIdle)
+	}
+	if machine.Role() != machineRoleUnconfirmedClient {
+		t.Fatalf("Role() = %v, want %v", machine.Role(), machineRoleUnconfirmedClient)
+	}
+	if machine.variables.requestPayloadLength != 20 {
+		t.Fatalf("requestPayloadLength = %d, want 20", machine.variables.requestPayloadLength)
+	}
+}
+
+func TestNewUnconfirmedServerMachineWithConfigInitializesVariables(t *testing.T) {
+	machine := newUnconfirmedServerMachineWithConfig(unconfirmedServerMachineConfig{
+		requestPayloadLength: 42,
+	})
+
+	if machine.State() != machineStateIdle {
+		t.Fatalf("State() = %v, want %v", machine.State(), machineStateIdle)
+	}
+	if machine.Role() != machineRoleUnconfirmedServer {
+		t.Fatalf("Role() = %v, want %v", machine.Role(), machineRoleUnconfirmedServer)
+	}
+	if machine.variables.requestPayloadLength != 42 {
+		t.Fatalf("requestPayloadLength = %d, want 42", machine.variables.requestPayloadLength)
+	}
+}
+
+func TestConfirmedClientMachineHandlePanicsOnUnknownState(t *testing.T) {
+	machine := newConfirmedClientMachine()
+	machine.state = machineState(255)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Handle() did not panic for unknown state")
+		}
+	}()
+
+	_, _ = machine.Handle(machineEventSendConfirmedRequest)
+}
+
+func TestUnconfirmedClientMachineHandlePanicsOnUnknownState(t *testing.T) {
+	machine := newUnconfirmedClientMachine()
+	machine.state = machineState(255)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Handle() did not panic for unknown state")
+		}
+	}()
+
+	_, _ = machine.Handle(machineEventSendUnconfirmedRequest)
+}
+
+func TestUnconfirmedServerMachineHandleReturnsErrorOnUnknownState(t *testing.T) {
+	machine := newUnconfirmedServerMachine()
+	machine.state = machineState(255)
+
+	_, err := machine.Handle(machineEventInboundUnconfirmedRequest)
+	if !errors.Is(err, ErrInvalidStateTransition) {
+		t.Fatalf("Handle() error = %v, want %v", err, ErrInvalidStateTransition)
+	}
+}
+
 //TODO State Machine kontrollieren, und wo nötig anpassen/erweitern

@@ -70,74 +70,98 @@ func (m *confirmedClientMachine) recordInboundTerminalPDU(pduType PDUType, paylo
 func (m *confirmedClientMachine) Handle(event machineEvent) (machineAction, error) {
 	switch m.state {
 	case machineStateIdle:
-		switch event {
-		case machineEventSendConfirmedRequest:
-			m.state = machineStateAwaitResponse
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInIdleState(event)
 	case machineStateAwaitResponse:
-		switch event {
-		case machineEventInboundSimpleACK,
-			machineEventInboundComplexACK,
-			machineEventInboundError,
-			machineEventInboundReject,
-			machineEventInboundAbort:
-			transition, _ := transitionForConfirmedClientInboundNonSegmentedEvent(event)
-			m.state = transition.nextState
-			return transition.action, nil
-		case machineEventInboundSegmentACK:
-			if _, ok := confirmedClientInboundSegmentedEvents[event]; !ok {
-				//segmentation not supported yet
-				return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-			}
-			return machineActionNone, ErrSegmentationNotSupported
-		case machineEventTimeout:
-			m.state = machineStateAborted
-			return machineActionFailTimeout, nil
-		case machineEventClose:
-			m.state = machineStateAborted
-			return machineActionFailClosed, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAwaitResponseState(event)
 	case machineStateAwaitSegmentACK:
-		switch event {
-		case machineEventInboundSegmentACK:
-			if _, ok := confirmedClientInboundSegmentedEvents[event]; !ok {
-				return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-			}
-			return machineActionNone, ErrSegmentationNotSupported
-		case machineEventTimeout:
-			m.state = machineStateAborted
-			return machineActionFailTimeout, nil
-		case machineEventClose:
-			m.state = machineStateAborted
-			return machineActionFailClosed, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAwaitSegmentACKState(event)
 	case machineStateCompleted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInCompletedState(event)
 	case machineStateAborted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAbortedState(event)
 	case machineStateAwaitConfirm:
-		switch event {
-		default:
+		return m.handleInAwaitConfirmState(event)
+	default:
+		panic(invalidStateTransition(m.Role(), m.state, event))
+	}
+}
+
+func (m *confirmedClientMachine) handleInIdleState(event machineEvent) (machineAction, error) {
+	switch event {
+	case machineEventSendConfirmedRequest:
+		m.state = machineStateAwaitResponse
+		return machineActionNone, nil
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *confirmedClientMachine) handleInAwaitResponseState(event machineEvent) (machineAction, error) {
+	switch event {
+	case machineEventInboundSimpleACK,
+		machineEventInboundComplexACK,
+		machineEventInboundError,
+		machineEventInboundReject,
+		machineEventInboundAbort:
+		transition, _ := transitionForConfirmedClientInboundNonSegmentedEvent(event)
+		m.state = transition.nextState
+		return transition.action, nil
+	case machineEventInboundSegmentACK:
+		if _, ok := confirmedClientInboundSegmentedEvents[event]; !ok {
+			//segmentation not supported yet
 			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 		}
+		return machineActionNone, ErrSegmentationNotSupported
+	case machineEventTimeout:
+		m.state = machineStateAborted
+		return machineActionFailTimeout, nil
+	case machineEventClose:
+		m.state = machineStateAborted
+		return machineActionFailClosed, nil
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
 	}
+}
 
-	return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+func (m *confirmedClientMachine) handleInAwaitSegmentACKState(event machineEvent) (machineAction, error) {
+	switch event {
+	case machineEventInboundSegmentACK:
+		if _, ok := confirmedClientInboundSegmentedEvents[event]; !ok {
+			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+		}
+		return machineActionNone, ErrSegmentationNotSupported
+	case machineEventTimeout:
+		m.state = machineStateAborted
+		return machineActionFailTimeout, nil
+	case machineEventClose:
+		m.state = machineStateAborted
+		return machineActionFailClosed, nil
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *confirmedClientMachine) handleInCompletedState(event machineEvent) (machineAction, error) {
+	switch event {
+	case machineEventClose:
+		return machineActionNone, nil
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *confirmedClientMachine) handleInAbortedState(event machineEvent) (machineAction, error) {
+	switch event {
+	case machineEventClose:
+		return machineActionNone, nil
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *confirmedClientMachine) handleInAwaitConfirmState(event machineEvent) (machineAction, error) {
+	switch event {
+	default:
+		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+	}
 }

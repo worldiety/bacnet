@@ -235,6 +235,13 @@ func (a *aseImpl) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req U
 		return ErrSegmentationNotSupported
 	}
 
+	machine := newUnconfirmedClientMachineWithConfig(unconfirmedClientMachineConfig{
+		requestPayloadLength: len(req.Payload),
+	})
+	if _, err := machine.Handle(machineEventSendUnconfirmedRequest); err != nil {
+		return err
+	}
+
 	raw, err := a.codec.Encode(OutboundAPDU{
 		Type:          PDUTypeUnconfirmedRequest,
 		ServiceChoice: req.ServiceChoice,
@@ -389,13 +396,26 @@ func (a *aseImpl) segmentationRequired(payloadLen int) bool {
 }
 
 func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, in InboundAPDU) error {
+	machine := newUnconfirmedServerMachineWithConfig(unconfirmedServerMachineConfig{
+		requestPayloadLength: len(in.Payload),
+	})
+	if _, err := machine.Handle(machineEventInboundUnconfirmedRequest); err != nil {
+		return err
+	}
+
 	a.mu.Lock()
 	handler, ok := a.unconfirmedHandlers[in.ServiceChoice]
 	a.mu.Unlock()
 	if !ok {
+		_, _ = machine.Handle(machineEventHandlerError)
 		return ErrHandlerNotFound
 	}
-	return handler(ctx, UnconfirmedRequest{ServiceChoice: in.ServiceChoice, Payload: util.CloneBytes(in.Payload)})
+	if err := handler(ctx, UnconfirmedRequest{ServiceChoice: in.ServiceChoice, Payload: util.CloneBytes(in.Payload)}); err != nil {
+		_, _ = machine.Handle(machineEventHandlerError)
+		return err
+	}
+	_, _ = machine.Handle(machineEventHandlerDone)
+	return nil
 }
 
 func (a *aseImpl) completeTransaction(in InboundAPDU) error {

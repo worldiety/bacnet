@@ -19,6 +19,8 @@ type machineRole byte
 const (
 	machineRoleConfirmedClient machineRole = iota
 	machineRoleConfirmedServer
+	machineRoleUnconfirmedClient
+	machineRoleUnconfirmedServer
 )
 
 func (r machineRole) String() string {
@@ -27,6 +29,10 @@ func (r machineRole) String() string {
 		return "confirmed-client"
 	case machineRoleConfirmedServer:
 		return "confirmed-server"
+	case machineRoleUnconfirmedClient:
+		return "unconfirmed-client"
+	case machineRoleUnconfirmedServer:
+		return "unconfirmed-server"
 	default:
 		return fmt.Sprintf("machine-role(%d)", r)
 	}
@@ -77,6 +83,9 @@ const (
 	machineEventResponseReadyComplexACK
 	machineEventResponseRequiresSegmentation
 	machineEventHandlerError
+	machineEventHandlerDone
+	machineEventSendUnconfirmedRequest
+	machineEventInboundUnconfirmedRequest
 	machineEventTimeout
 	machineEventClose
 )
@@ -247,6 +256,12 @@ func (e machineEvent) String() string {
 		return "response-requires-segmentation"
 	case machineEventHandlerError:
 		return "handler-error"
+	case machineEventHandlerDone:
+		return "handler-done"
+	case machineEventSendUnconfirmedRequest:
+		return "send-unconfirmed-request"
+	case machineEventInboundUnconfirmedRequest:
+		return "inbound-unconfirmed-request"
 	case machineEventTimeout:
 		return "timeout"
 	case machineEventClose:
