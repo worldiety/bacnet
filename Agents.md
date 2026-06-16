@@ -17,22 +17,22 @@ conversation with the maintainer.
 
 ### Package layout
 
-| Path | Status | Purpose |
-|---|---|---|
-| `.` (`bacnet`) | active | Package root — will be populated with higher-level types and functions in a later restructuring step; currently contains only `doc.go` |
-| `common/` | active | Landing doc for the `common/*` sub-packages |
-| `common/errors/` | active | `ValidationError`, `NewValidationError`, `ErrInvalid*` sentinels — shared validation primitives used across all packages |
-| `common/log/` | active | Package-level `Logger` (`*slog.Logger`) — the single logger used by all packages |
-| `common/netprim/` | active | Network primitives: `NetworkNumber`, `NetworkPriority` + constants, `LocalNetwork`, `GlobalBroadcastNetwork`, `ProtocolVersion`, `IpDefaultUdpPort`; `Address`, `NewAddress` and methods |
-| `common/types/` | active | Application-layer types: `DeviceInstance`, `ObjectType` + constants, `ObjectIdentifier`, `PropertyIdentifier` + constants, `RejectReason` + constants, `MaxInstanceNumber`, `MaxObjectType` |
-| `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `bbmd.go`; `DeviceIp4` interface + `deviceImpl` (local broadcast + foreign device registration) in `device.go` |
-| `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking + clause 5.4 state-machine scaffolding); typed `Client` wrapper (`client.go`, `client_discovery.go`, `client_object_access.go`, `client_cov.go`, `client_extend.go`); `UserElement` wrapper |
-| `encoding/` | active | BACnet tag/value encoding; `ParseTag`, `EncodeOpeningTag`, `EncodeApplicationPrimitive`, `EncodeUnsigned`/`DecodeUnsigned` |
-| `npdu/` | active | BACnet network layer NPDU encode/decode scaffold (NPCI parsing, routed/local APDU constructors, network-layer-message constructors) |
-| `npdu/router/` | active | Routing table; `Router` interface, `Evaluate`, `AddConnectedRoute`/`AddLearnedRoute`, `Decision` type |
-| `internal/util/` | active | Non-public `CopyPointersValue[T any](in *T) *T` — generic pointer copy using Go 1.26 `new(*in)` syntax |
-| `testdata/npdu/` | active | Wire conformance vectors `nlm_vectors.txt` (format: `name\|hex\|valid`) |
-| `examples/` | deferred | Deferred until the API is stable |
+| Path              | Status   | Purpose                                                                                                                                                                                                                                                                                                            |
+|-------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `.` (`bacnet`)    | active   | Package root — will be populated with higher-level types and functions in a later restructuring step; currently contains only `doc.go`                                                                                                                                                                             |
+| `common/`         | active   | Landing doc for the `common/*` sub-packages                                                                                                                                                                                                                                                                        |
+| `common/errors/`  | active   | `ValidationError`, `NewValidationError`, `ErrInvalid*` sentinels — shared validation primitives used across all packages                                                                                                                                                                                           |
+| `common/log/`     | active   | Package-level `Logger` (`*slog.Logger`) — the single logger used by all packages                                                                                                                                                                                                                                   |
+| `common/netprim/` | active   | Network primitives: `NetworkNumber`, `NetworkPriority` + constants, `LocalNetwork`, `GlobalBroadcastNetwork`, `ProtocolVersion`, `IpDefaultUdpPort`; `Address`, `NewAddress` and methods                                                                                                                           |
+| `common/types/`   | active   | Application-layer types: `DeviceInstance`, `ObjectType` + constants, `ObjectIdentifier`, `PropertyIdentifier` + constants, `RejectReason` + constants, `MaxInstanceNumber`, `MaxObjectType`                                                                                                                        |
+| `bip/`            | active   | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `bbmd.go`; `DeviceIp4` interface + `deviceImpl` (local broadcast + foreign device registration) in `device.go` |
+| `apdu/`           | active   | BACnet application layer scaffold (ASE dispatch + invoke tracking + clause 5.4 state-machine scaffolding); typed `Client` wrapper (`client.go`, `client_discovery.go`, `client_object_access.go`, `client_cov.go`, `client_extend.go`); `UserElement` wrapper                                                      |
+| `encoding/`       | active   | BACnet tag/value encoding; `ParseTag`, `EncodeOpeningTag`, `EncodeApplicationPrimitive`, `EncodeUnsigned`/`DecodeUnsigned`                                                                                                                                                                                         |
+| `npdu/`           | active   | BACnet network layer NPDU encode/decode scaffold (NPCI parsing, routed/local APDU constructors, network-layer-message constructors)                                                                                                                                                                                |
+| `npdu/router/`    | active   | Routing table; `Router` interface, `Evaluate`, `AddConnectedRoute`/`AddLearnedRoute`, `Decision` type                                                                                                                                                                                                              |
+| `internal/util/`  | active   | Non-public `CopyPointersValue[T any](in *T) *T` — generic pointer copy using Go 1.26 `new(*in)` syntax                                                                                                                                                                                                             |
+| `testdata/npdu/`  | active   | Wire conformance vectors `nlm_vectors.txt` (format: `name\|hex\|valid`)                                                                                                                                                                                                                                            |
+| `examples/`       | deferred | Deferred until the API is stable                                                                                                                                                                                                                                                                                   |
 
 ## Technical requirements
 - The project must be implemented purely in Go. The minimum go version is declared in the `go.mod` file.
@@ -78,7 +78,7 @@ conversation with the maintainer.
 ### Test conventions
 - Test files use the same package as the code under test (e.g. `package netprim`, `package apdu`, `package bip`) — **not** `*_test` external packages.
 - Tests follow the table-driven pattern using `t.Run` with a `tests []struct{name, input, want/wantErr}` slice — use this for validation and `String()` coverage.
-- Straight-line (non-table) tests are acceptable for mutation/side-effect checks where a table adds no clarity (e.g. `TestNewAddressCopiesMAC`).
+- Straight-line (non-table) tests are acceptable for mutation/side effect checks where a table adds no clarity (e.g. `TestNewAddressCopiesMAC`).
 - Use `errors.Is(err, ErrXxx)` for all error assertions — never compare error strings directly.
 - `npdu/npdu_test.go` is the reference for NPDU expectations: it covers known wire bytes, constructor validation, encode/decode roundtrips, priority preservation, and defensive-copy behavior.
 

@@ -14,21 +14,21 @@ layer, including a typed client API for common BACnet services.
 
 ## Package layout
 
-| Package | Purpose |
-|---|---|
-| `.` (`bacnet`) | Package root — will be populated with higher-level types and functions in a later restructuring step |
-| `common/errors/` | `ValidationError`, `NewValidationError`, shared `ErrInvalid*` sentinels |
-| `common/log/` | Package-level `Logger` (`*slog.Logger`) used by all packages |
+| Package           | Purpose                                                                                                                                                          |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `.` (`bacnet`)    | Package root — will be populated with higher-level types and functions in a later restructuring step                                                             |
+| `common/errors/`  | `ValidationError`, `NewValidationError`, shared `ErrInvalid*` sentinels                                                                                          |
+| `common/log/`     | Package-level `Logger` (`*slog.Logger`) used by all packages                                                                                                     |
 | `common/netprim/` | Network primitives: `NetworkNumber`, `NetworkPriority`, `Address`, `NewAddress`, `LocalNetwork`, `GlobalBroadcastNetwork`, `ProtocolVersion`, `IpDefaultUdpPort` |
-| `common/types/` | Application-layer types: `DeviceInstance`, `ObjectType`, `ObjectIdentifier`, `PropertyIdentifier`, `RejectReason` + all constants |
-| `bip/` | BACnet/IP BVLC frame encode/decode, UDP transport, BBMD, foreign-device registration, `ClientRuntime` end-to-end wiring |
-| `apdu/` | Application layer: ICI-first ASE dispatch, clause 5.4 state machines, typed `Client` with confirmed/unconfirmed services, discovery |
-| `npdu/` | NPDU encode/decode per clause 6.2.2, all standard network-layer-message types |
-| `npdu/router/` | Routing table and forwarding policy (connected + TTL-learned routes) |
-| `encoding/` | BACnet tag/value encoding primitives (tag parser, unsigned, object-id, character-string) |
-| `internal/util/` | Non-public shared helpers (e.g. `CopyPointersValue[T]`) |
-| `testdata/npdu/` | Wire conformance vectors for NLM encode/decode |
-| `examples/` | Deferred until the API is stable |
+| `common/types/`   | Application-layer types: `DeviceInstance`, `ObjectType`, `ObjectIdentifier`, `PropertyIdentifier`, `RejectReason` + all constants                                |
+| `bip/`            | BACnet/IP BVLC frame encode/decode, UDP transport, BBMD, foreign-device registration, `ClientRuntime` end-to-end wiring                                          |
+| `apdu/`           | Application layer: ICI-first ASE dispatch, clause 5.4 state machines, typed `Client` with confirmed/unconfirmed services, discovery                              |
+| `npdu/`           | NPDU encode/decode per clause 6.2.2, all standard network-layer-message types                                                                                    |
+| `npdu/router/`    | Routing table and forwarding policy (connected + TTL-learned routes)                                                                                             |
+| `encoding/`       | BACnet tag/value encoding primitives (tag parser, unsigned, object-id, character-string)                                                                         |
+| `internal/util/`  | Non-public shared helpers (e.g. `CopyPointersValue[T]`)                                                                                                          |
+| `testdata/npdu/`  | Wire conformance vectors for NLM encode/decode                                                                                                                   |
+| `examples/`       | Deferred until the API is stable                                                                                                                                 |
 
 ## Project structure
 
