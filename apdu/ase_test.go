@@ -2,7 +2,9 @@ package apdu
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -48,7 +50,7 @@ func TestInvokeConfirmedCannotSend(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x09})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestInvokeConfirmedInboundSegmentAckFailsFast(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0A})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -135,7 +137,7 @@ func TestInvokeConfirmedInboundSegmentedComplexACKFailsFast(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0B})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -264,7 +266,7 @@ func TestInvokeConfirmedRoundTrip(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -324,11 +326,12 @@ func TestInvokeConfirmedUnexpectedPeerDoesNotCompleteTransaction(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x21})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
-	otherPeer, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x22})
+
+	otherPeer, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 243}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -396,7 +399,7 @@ func TestInvokeConfirmedUnexpectedServiceChoiceDoesNotCompleteTransaction(t *tes
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x23})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -473,7 +476,7 @@ func TestInvokeConfirmedRejectFromExpectedPeerCompletesTransaction(t *testing.T)
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x24})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -529,7 +532,7 @@ func TestInvokeConfirmedTimeout(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -553,7 +556,7 @@ func TestInvokeConfirmedRetriesThenTimeout(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x12})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -598,7 +601,7 @@ func TestInboundConfirmedDispatch(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x03})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -656,7 +659,7 @@ func TestInboundConfirmedHandlerErrorSendsError(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x31})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -713,7 +716,7 @@ func TestInboundConfirmedNoHandlerSendsReject(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x32})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -774,7 +777,7 @@ func TestInboundConfirmedOversizedResponseSendsAbort(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x33})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -875,7 +878,7 @@ func TestASESegmentedConfirmedResponseHappyPath(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x44})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -992,7 +995,7 @@ func TestASESegmentedConfirmedResponseInitialWindowSendsMultipleSegments(t *test
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x45})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1073,7 +1076,7 @@ func TestSendUnconfirmed(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1117,7 +1120,7 @@ func TestBeginConfirmedServiceRequestAPDUSizeBoundary(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x51})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1159,7 +1162,7 @@ func TestSendUnconfirmedAPDUSizeBoundary(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x52})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1195,7 +1198,7 @@ func TestBeginConfirmedServiceRequestRejectsUnconfirmedServiceChoice(t *testing.
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x40})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1219,7 +1222,7 @@ func TestSendUnconfirmedRejectsConfirmedServiceChoice(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x41})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1333,7 +1336,7 @@ func TestASESegmentedConfirmedRequestHappyPath(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x01, 0x02, 0x03, 0x04}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	var receivedPayload []byte
 
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1413,7 +1416,7 @@ func TestASESegmentedConfirmedRequestNegotiatesWindowSize(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x11, 0x22}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		return ConfirmedResponseICI{Destination: ind.Source, InvokeID: ind.InvokeID}, nil
 	}); err != nil {
@@ -1463,7 +1466,7 @@ func TestASESegmentedConfirmedRequestNotSupported(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x0A, 0x0B}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	pkt := buildSegmentedConfirmedRequestNPDU(t, 1, 0, 1, true, ServiceChoiceReadProperty, []byte{0x01})
 
 	err = ase.OnInboundNPDU(context.Background(), src, pkt)
@@ -1510,7 +1513,7 @@ func TestASESegmentedConfirmedRequestOutOfOrder(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0xCC, 0xDD}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 
 	var receivedPayload []byte
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1631,7 +1634,7 @@ func TestASESegmentedConfirmedRequestDuplicateFirstSegmentReACKsWithoutRedispatc
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x21, 0x22}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	handlerCalls := 0
 
 	err = ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1701,7 +1704,7 @@ func TestASESegmentedConfirmedRequestExceedingMaxDuplicatesSendsAbort(t *testing
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x31, 0x32}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	handlerCalls := 0
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		handlerCalls++
@@ -1760,7 +1763,7 @@ func TestASESegmentedConfirmedRequestTimeout(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := netprim.Address{MAC: []byte{0x0F, 0xF0}}
+	src := netprim.Address{AddrPort: netip.AddrPortFrom(netip.MustParseAddr("1.2.3.4"), 1234)}
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		return ConfirmedResponseICI{Destination: ind.Source, InvokeID: ind.InvokeID}, nil
 	}); err != nil {
@@ -1883,7 +1886,7 @@ func TestASEDuplicateConfirmedRequestDropped(t *testing.T) {
 	}
 	defer ase.Close()
 
-	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0xDD})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, binary.BigEndian.AppendUint16([]byte{192, 168, 8, 237}, 47808))
 	if err != nil {
 		t.Fatalf("NewAddress error = %v", err)
 	}

@@ -79,7 +79,7 @@ func (d *deviceImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
 // dst must be a valid IPv4 address-port pair; it is used directly as the UDP destination.
 func (d *deviceImpl) SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) error {
 	if !dst.IsValid() || !dst.Addr().Is4() {
-		return errors.NewValidationError("dst", dst, ErrInvalidIPAddress)
+		return errors.NewValidationError("dst", dst, errors.ErrInvalidIPAddress)
 	}
 
 	raw, err := msg.Encode()
@@ -98,7 +98,7 @@ func (d *deviceImpl) SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) er
 // RegisterAsForeignDevice implements DeviceIp4.
 func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 	if !bbmdAddr.IsValid() || !bbmdAddr.Is4() {
-		return errors.NewValidationError("bbmd address", bbmdAddr, ErrInvalidIPAddress)
+		return errors.NewValidationError("bbmd address", bbmdAddr, errors.ErrInvalidIPAddress)
 	}
 
 	req, err := NewRegisterForeignDevice(d.ttl)

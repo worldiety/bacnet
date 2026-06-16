@@ -145,8 +145,8 @@ func (m *confirmedServerMachine) lastContiguousSequenceNumber() segmentSequenceN
 // AbortReason identifies the reason for an Abort APDU per ANSI/ASHRAE 135-2024.
 type AbortReason uint8
 
+// Abort reason wire codes per ANSI/ASHRAE 135-2024 APDU Abort PDU definition.
 const (
-	// Abort reason wire codes per ANSI/ASHRAE 135-2024 APDU Abort PDU definition.
 	AbortReasonOther AbortReason = 0
 
 	AbortReasonBufferOverflow               AbortReason = 1

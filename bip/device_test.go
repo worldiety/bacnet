@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 	"go.wdy.de/bacnet/common/netprim"
 )
 
@@ -264,8 +265,8 @@ func TestSendUnicastInvalidDst(t *testing.T) {
 			d := mustDeviceIp4(t, conn, 60)
 			msg, _ := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, []byte{0x01})
 			err := d.SendUnicast(tt.dst, *msg)
-			if !errors.Is(err, ErrInvalidIPAddress) {
-				t.Fatalf("err = %v, want %v", err, ErrInvalidIPAddress)
+			if !errors.Is(err, bacneterrors.ErrInvalidIPAddress) {
+				t.Fatalf("err = %v, want %v", err, bacneterrors.ErrInvalidIPAddress)
 			}
 		})
 	}
@@ -372,8 +373,8 @@ func TestRegisterAsForeignDeviceInvalidAddrError(t *testing.T) {
 			conn := &multiWriteConn{}
 			d := mustDeviceIp4(t, conn, 60)
 			err := d.RegisterAsForeignDevice(tt.addr)
-			if !errors.Is(err, ErrInvalidIPAddress) {
-				t.Fatalf("err = %v, want %v", err, ErrInvalidIPAddress)
+			if !errors.Is(err, bacneterrors.ErrInvalidIPAddress) {
+				t.Fatalf("err = %v, want %v", err, bacneterrors.ErrInvalidIPAddress)
 			}
 		})
 	}

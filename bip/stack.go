@@ -49,20 +49,14 @@ func (s *Stack) SendNPDU(_ context.Context, dst netprim.Address, packet npdu.Net
 		return fmt.Errorf("%w: encode npdu: %v", ErrWriteFailure, err)
 	}
 
-	udpDst, err := AddressToAddrPort(dst)
-	if err != nil {
-		log.Logger.Error("bip stack resolve destination", "error", err, "dst_network", dst.Network)
-		return fmt.Errorf("%w: resolve destination: %v", ErrUnsupportedAddress, err)
-	}
-
 	frame, err := NewFrameWithType(BVLCTypeBACnetIP, FunctionOriginalUnicastNPDU, npduBytes)
 	if err != nil {
-		log.Logger.Error("bip stack build unicast frame", "error", err, "dst", udpDst)
+		log.Logger.Error("bip stack build unicast frame", "error", err, "dst", dst)
 		return fmt.Errorf("%w: build original-unicast-npdu frame: %v", ErrWriteFailure, err)
 	}
 
-	if err := s.transport.SendFrame(udpDst, frame); err != nil {
-		log.Logger.Error("bip stack send frame", "error", err, "dst", udpDst)
+	if err := s.transport.SendFrame(dst.AddrPort, frame); err != nil {
+		log.Logger.Error("bip stack send frame", "error", err, "dst", dst.AddrPort)
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
@@ -123,7 +117,7 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 
 	switch frame.Function {
 	case FunctionOriginalUnicastNPDU, FunctionOriginalBroadcastNPDU:
-		addr, err := AddrPortToAddress(senderAddr)
+		addr, err := netprim.AddrPortToAddress(senderAddr)
 		if err != nil {
 			log.Logger.Error("bip stack decode sender address", "error", err, "sender", senderAddr)
 			return err
@@ -142,7 +136,7 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 			log.Logger.Error("bip stack decode forwarded origin", "error", err)
 			return fmt.Errorf("decode forwarded-npdu origin address: %w", err)
 		}
-		addr, err := AddrPortToAddress(originAddr)
+		addr, err := netprim.AddrPortToAddress(originAddr)
 		if err != nil {
 			log.Logger.Error("bip stack convert forwarded origin", "error", err, "origin", originAddr)
 			return err

@@ -19,7 +19,7 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 	}{
 		{
 			name:          "subscribe-cov",
-			serviceChoice: subscribeCOVServiceChoice,
+			serviceChoice: ServiceChoiceSubscribeCOV,
 			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
 				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 				issueConfirmed := true
@@ -135,7 +135,7 @@ func TestSubscribeCOVPhaseRemoteErrorMapping(t *testing.T) {
 			if tt.pduType == PDUTypeError {
 				payload = []byte{0x01, 0x02}
 			}
-			inboundBytes, err := encodeAPDU(outboundAPDU{Type: tt.pduType, InvokeID: outbound.InvokeID, ServiceChoice: subscribeCOVServiceChoice, Payload: payload})
+			inboundBytes, err := encodeAPDU(outboundAPDU{Type: tt.pduType, InvokeID: outbound.InvokeID, ServiceChoice: ServiceChoiceSubscribeCOV, Payload: payload})
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}

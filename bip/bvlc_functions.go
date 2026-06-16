@@ -230,7 +230,7 @@ func (f *FdtEntry) RegisteredTtl() TTL {
 // address must be a valid IPv4 address-port pair.
 func NewFdtEntry(address netip.AddrPort, ttl TTL) (*FdtEntry, error) {
 	if !address.Addr().Is4() || !address.IsValid() {
-		return nil, errors.NewValidationError("address", address, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("address", address, errors.ErrInvalidIPAddress)
 	}
 
 	if ttl == 0 {
@@ -559,7 +559,7 @@ func NewWriteBroadcastDistributionTable(entries []BdtEntry) (*WriteBroadcastDist
 
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, errors.ErrInvalidIPAddress)
 		}
 	}
 
@@ -726,7 +726,7 @@ func NewReadBroadcastDistributionTableAck(entries []BdtEntry) (*ReadBroadcastDis
 	}
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, errors.ErrInvalidIPAddress)
 		}
 	}
 	entriesCopy := make(BdtEntryList, len(entries))
@@ -827,7 +827,7 @@ func (f *ForwardedNpdu) NPDUBytes() []byte {
 // npdu must be non-empty.
 func NewForwardedNpdu(originAddr netip.AddrPort, npdu []byte) (*ForwardedNpdu, error) {
 	if !originAddr.Addr().Is4() || !originAddr.IsValid() {
-		return nil, errors.NewValidationError("origin address", originAddr, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("origin address", originAddr, errors.ErrInvalidIPAddress)
 	}
 
 	if len(npdu) == 0 {
@@ -1106,7 +1106,7 @@ func NewReadForeignDeviceTableAck(entries []FdtEntry) (*ReadForeignDeviceTableAc
 	}
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, errors.ErrInvalidIPAddress)
 		}
 	}
 	entriesCopy := make(FdtEntryList, len(entries))
@@ -1203,7 +1203,7 @@ func (d *DeleteForeignDeviceTableEntry) FdtEntry() FdtEntry {
 // for BACnet/IP (IPv4). entry must be valid.
 func NewDeleteForeignDeviceTableEntry(entry FdtEntry) (*DeleteForeignDeviceTableEntry, error) {
 	if !entry.Valid() {
-		return nil, errors.NewValidationError("entry", entry, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("entry", entry, errors.ErrInvalidIPAddress)
 	}
 	const frameLen = BVLCHeaderLen + entryDataLen
 	return &DeleteForeignDeviceTableEntry{

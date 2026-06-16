@@ -98,7 +98,7 @@ func NewObjectIdentifier(objectType ObjectType, instance uint32) (ObjectIdentifi
 
 // ObjectType returns the BACnet object type portion of the identifier.
 func (id ObjectIdentifier) ObjectType() ObjectType {
-	return ObjectType(uint32(id) >> 22)
+	return ObjectType(id >> 22)
 }
 
 // Instance returns the BACnet object instance portion of the identifier.

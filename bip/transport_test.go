@@ -5,6 +5,8 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 )
 
 type fakeDatagramConn struct {
@@ -129,7 +131,7 @@ func TestAddressFamilyHelpers(t *testing.T) {
 	}{
 		{name: "ipv4", addr: netip.MustParseAddr("10.0.0.20"), wantNetwork: "udp4", wantType: BVLCTypeBACnetIP},
 		{name: "ipv6", addr: netip.MustParseAddr("2001:db8::20"), wantNetwork: "udp6", wantType: BVLCTypeBACnetIP6},
-		{name: "invalid", addr: netip.Addr{}, wantErr: ErrInvalidIPAddress},
+		{name: "invalid", addr: netip.Addr{}, wantErr: bacneterrors.ErrInvalidIPAddress},
 	}
 
 	for _, tt := range tests {

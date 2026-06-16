@@ -15,8 +15,8 @@ var (
 	// ErrInvalidObjectInstance indicates that an object instance is outside the BACnet range.
 	ErrInvalidObjectInstance = errors.New("invalid object instance")
 
-	// ErrInvalidMACAddress indicates that a BACnet MAC address is malformed.
-	ErrInvalidMACAddress = errors.New("invalid MAC address")
+	// ErrInvalidBacnetAddress indicates that a BACnet MAC address is malformed.
+	ErrInvalidBacnetAddress = errors.New("invalid BACnet address")
 )
 
 // ValidationError describes an invalid value supplied to a BACnet helper.
@@ -53,3 +53,5 @@ func (e *ValidationError) Unwrap() error {
 	}
 	return e.Cause
 }
+
+var ErrInvalidIPAddress = errors.New("invalid ip address")

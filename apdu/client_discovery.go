@@ -60,7 +60,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 					"apdu discover duplicate i-am dropped",
 					"device_identifier", indication.DeviceIdentifier,
 					"src_network", indication.Source.Network,
-					"src_mac_length", len(indication.Source.MACBytes()),
+					"src_mac_length", len(indication.Source.AddrPortBytes()),
 				)
 
 				continue
@@ -70,7 +70,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 				"apdu discover i-am accepted",
 				"device_identifier", indication.DeviceIdentifier,
 				"src_network", indication.Source.Network,
-				"src_mac_length", len(indication.Source.MACBytes()),
+				"src_mac_length", len(indication.Source.AddrPortBytes()),
 			)
 
 			out = append(out, indication)
@@ -79,7 +79,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 }
 
 func discoverDedupKey(indication IAmIndication) string {
-	return fmt.Sprintf("%d|%d|%x", indication.DeviceIdentifier, indication.Source.Network, indication.Source.MAC)
+	return fmt.Sprintf("%d|%d|%x", indication.DeviceIdentifier, indication.Source.Network, indication.Source.AddrPort)
 }
 
 type iAmDispatcher struct {
@@ -164,7 +164,7 @@ func (d *iAmDispatcher) onInbound(ctx context.Context, indication UnconfirmedInd
 	log.Logger.Debug(
 		"apdu i-am dispatcher inbound",
 		"src_network", indication.Source.Network,
-		"src_mac_length", len(indication.Source.MACBytes()),
+		"src_mac_length", len(indication.Source.AddrPortBytes()),
 		"payload_bytes", len(indication.ServiceRequest.Payload),
 	)
 
@@ -210,7 +210,7 @@ func (d *iAmDispatcher) onInbound(ctx context.Context, indication UnconfirmedInd
 				"apdu i-am dispatcher subscriber drop",
 				"device_identifier", typed.DeviceIdentifier,
 				"src_network", typed.Source.Network,
-				"src_mac_length", len(typed.Source.MACBytes()),
+				"src_mac_length", len(typed.Source.AddrPortBytes()),
 			)
 		}
 	}

@@ -45,9 +45,9 @@ type InvokeID byte
 // ServiceChoice identifies an application service.
 type ServiceChoice byte
 
+// Unconfirmed discovery and identification service choices.
+// ISO 135-2024, application-layer service-choice groups.
 const (
-	// Unconfirmed discovery and identification service choices.
-	// ISO 135-2024, application-layer service-choice groups.
 	ServiceChoiceIAm                                ServiceChoice = 0
 	ServiceChoiceIHave                              ServiceChoice = 1
 	ServiceChoiceUnconfirmedCOVNotification         ServiceChoice = 2
@@ -66,6 +66,7 @@ const (
 	// BACnet encodes confirmed and unconfirmed service choices in separate namespaces.
 	// In this prototype both are represented by one ServiceChoice type, so the numeric
 	// value collides with ServiceChoiceUnconfirmedTextMessage.
+
 	ServiceChoiceSubscribeCOV ServiceChoice = 5
 
 	// Confirmed object-access service choices.

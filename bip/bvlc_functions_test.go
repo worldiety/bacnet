@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/netip"
 	"testing"
+
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 )
 
 func mustBdtEntryForBVLCFunctionTest(t *testing.T, addr string, mask net.IPMask) BdtEntry {
@@ -63,8 +65,8 @@ func TestForwardedNpduRoundTripAndDefensiveCopy(t *testing.T) {
 
 func TestForwardedNpduValidation(t *testing.T) {
 	_, err := NewForwardedNpdu(netip.MustParseAddrPort("[::1]:47808"), []byte{0x01})
-	if !errors.Is(err, ErrInvalidIPAddress) {
-		t.Fatalf("NewForwardedNpdu() error = %v, want %v", err, ErrInvalidIPAddress)
+	if !errors.Is(err, bacneterrors.ErrInvalidIPAddress) {
+		t.Fatalf("NewForwardedNpdu() error = %v, want %v", err, bacneterrors.ErrInvalidIPAddress)
 	}
 
 	_, err = NewForwardedNpdu(netip.MustParseAddrPort("10.0.0.1:47808"), nil)

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	errors2 "go.wdy.de/bacnet/common/errors"
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 	"go.wdy.de/bacnet/common/netprim"
 )
 
@@ -16,7 +16,7 @@ func TestNewDeviceInstance(t *testing.T) {
 	}{
 		{name: "valid", input: 42},
 		{name: "max", input: netprim.MaxInstanceNumber},
-		{name: "invalid", input: netprim.MaxInstanceNumber + 1, wantErr: errors2.ErrInvalidDeviceInstance},
+		{name: "invalid", input: netprim.MaxInstanceNumber + 1, wantErr: bacneterrors.ErrInvalidDeviceInstance},
 	}
 
 	for _, tt := range tests {
@@ -69,11 +69,11 @@ func TestNewObjectIdentifier(t *testing.T) {
 }
 
 func TestNewObjectIdentifierRejectsInvalidInput(t *testing.T) {
-	if _, err := NewObjectIdentifier(ObjectTypeMax+1, 1); !errors.Is(err, errors2.ErrInvalidObjectType) {
+	if _, err := NewObjectIdentifier(ObjectTypeMax+1, 1); !errors.Is(err, bacneterrors.ErrInvalidObjectType) {
 		t.Fatalf("expected ErrInvalidObjectType, got %v", err)
 	}
 
-	if _, err := NewObjectIdentifier(ObjectTypeDevice, netprim.MaxInstanceNumber+1); !errors.Is(err, errors2.ErrInvalidObjectInstance) {
+	if _, err := NewObjectIdentifier(ObjectTypeDevice, netprim.MaxInstanceNumber+1); !errors.Is(err, bacneterrors.ErrInvalidObjectInstance) {
 		t.Fatalf("expected ErrInvalidObjectInstance, got %v", err)
 	}
 }

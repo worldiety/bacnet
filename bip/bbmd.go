@@ -53,7 +53,7 @@ type BBMD interface {
 func NewBBMD(bdt []BdtEntry) (BBMD, error) {
 	for i, e := range bdt {
 		if !e.Valid() {
-			return nil, errors.NewValidationError(fmt.Sprintf("bdt[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("bdt[%d]", i), e, errors.ErrInvalidIPAddress)
 		}
 	}
 

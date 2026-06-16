@@ -67,7 +67,7 @@ func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 
 func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if !addr.IsValid() {
-		return "", errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+		return "", errors.NewValidationError("ip address", addr, errors.ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return "udp4", nil
@@ -75,12 +75,12 @@ func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if addr.Is6() {
 		return "udp6", nil
 	}
-	return "", errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+	return "", errors.NewValidationError("ip address", addr, errors.ErrInvalidIPAddress)
 }
 
 func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if !addr.IsValid() {
-		return 0, errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+		return 0, errors.NewValidationError("ip address", addr, errors.ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return BVLCTypeBACnetIP, nil
@@ -88,7 +88,7 @@ func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if addr.Is6() {
 		return BVLCTypeBACnetIP6, nil
 	}
-	return 0, errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+	return 0, errors.NewValidationError("ip address", addr, errors.ErrInvalidIPAddress)
 }
 
 // Transport sends and receives BVLC frames via UDP-like datagrams.

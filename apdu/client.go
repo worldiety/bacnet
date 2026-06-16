@@ -67,7 +67,7 @@ type Client interface {
 	// SubscribeCOVProperty sends a confirmed SubscribeCOVProperty request and expects SimpleACK.
 	SubscribeCOVProperty(ctx context.Context, dst netprim.Address, req SubscribeCOVPropertyRequest) error
 
-	// HandleIAm registers a typed handler for incoming unconfirmed I-Am indications.
+	// RegisterIAmHandler registers a typed handler for incoming unconfirmed I-Am indications.
 	RegisterIAmHandler(handler IAmHandler) error
 
 	// Discover sends Who-Is and collects I-Am indications within a window.
@@ -160,10 +160,14 @@ type WhoIsRequest struct {
 	HighLimit *types.DeviceInstance
 }
 
-// NewWhoIsRequest constructs a validated WhoIsRequest.
+func NewWhoIsRequest() WhoIsRequest {
+	return WhoIsRequest{LowLimit: nil, HighLimit: nil}
+}
+
+// NewWhoIsRequestWithLimits constructs a validated WhoIsRequest.
 // lowLimit and highLimit must either both be nil or both be set.
-func NewWhoIsRequest(lowLimit, highLimit *types.DeviceInstance) (WhoIsRequest, error) {
-	res := WhoIsRequest{LowLimit: lowLimit, HighLimit: highLimit}
+func NewWhoIsRequestWithLimits(lowLimit, highLimit types.DeviceInstance) (WhoIsRequest, error) {
+	res := WhoIsRequest{LowLimit: &lowLimit, HighLimit: &highLimit}
 	if err := validateWhoIsRequest(res); err != nil {
 		return WhoIsRequest{}, err
 	}

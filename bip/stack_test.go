@@ -203,7 +203,7 @@ func TestStackSendNPDUEncoding(t *testing.T) {
 
 	// A BACnet/IP peer at 192.168.1.20:47808.
 	dstAddrPort := netip.MustParseAddrPort("192.168.1.20:47808")
-	dst, err := AddrPortToAddress(dstAddrPort)
+	dst, err := netprim.AddrPortToAddress(dstAddrPort)
 	if err != nil {
 		t.Fatalf("AddrPortToAddress: %v", err)
 	}
@@ -240,26 +240,12 @@ func TestStackSendNPDUEncoding(t *testing.T) {
 	}
 }
 
-func TestStackSendNPDUUnsupportedAddress(t *testing.T) {
-	conn := &pipeConn{}
-	s := mustStack(t, conn)
-
-	pkt, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x01})
-
-	// Non-local network address cannot be converted to AddrPort.
-	dst := netprim.Address{Network: 100, MAC: []byte{1, 2, 3, 4, 0xBA, 0xC0}}
-	err := s.SendNPDU(context.Background(), dst, *pkt)
-	if !errors.Is(err, ErrUnsupportedAddress) {
-		t.Fatalf("err = %v, want %v", err, ErrUnsupportedAddress)
-	}
-}
-
 func TestStackSendNPDUWriteError(t *testing.T) {
 	conn := &pipeConn{writeErr: ErrWriteFailure}
 	s := mustStack(t, conn)
 
 	pkt, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x01})
-	dst, _ := AddrPortToAddress(netip.MustParseAddrPort("1.2.3.4:47808"))
+	dst, _ := netprim.AddrPortToAddress(netip.MustParseAddrPort("1.2.3.4:47808"))
 
 	err := s.SendNPDU(context.Background(), dst, *pkt)
 	if !errors.Is(err, ErrWriteFailure) {
@@ -320,7 +306,7 @@ func TestStackRunDispatchesUnicastFrame(t *testing.T) {
 		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
 	}
 
-	wantSrc, _ := AddrPortToAddress(sender)
+	wantSrc, _ := netprim.AddrPortToAddress(sender)
 	if !ase.calls[0].src.Equal(wantSrc) {
 		t.Errorf("src = %v, want %v", ase.calls[0].src, wantSrc)
 	}
@@ -347,7 +333,7 @@ func TestStackRunDispatchesBroadcastFrame(t *testing.T) {
 		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
 	}
 
-	wantSrc, _ := AddrPortToAddress(sender)
+	wantSrc, _ := netprim.AddrPortToAddress(sender)
 	if !ase.calls[0].src.Equal(wantSrc) {
 		t.Errorf("src = %v, want %v", ase.calls[0].src, wantSrc)
 	}
@@ -376,7 +362,7 @@ func TestStackRunDispatchesForwardedFrame(t *testing.T) {
 	}
 
 	// Source must be the originator, NOT the BBMD.
-	wantSrc, _ := AddrPortToAddress(originator)
+	wantSrc, _ := netprim.AddrPortToAddress(originator)
 	if !ase.calls[0].src.Equal(wantSrc) {
 		t.Errorf("src = %v, want originator %v", ase.calls[0].src, wantSrc)
 	}

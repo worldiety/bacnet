@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	errors2 "go.wdy.de/bacnet/common/errors"
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/common/types"
 	bacencoding "go.wdy.de/bacnet/encoding"
@@ -127,15 +127,15 @@ func NewReadPropertyMultipleRequest(specs []ReadAccessSpecification) (ReadProper
 
 func validateReadPropertyMultipleRequest(req ReadPropertyMultipleRequest) error {
 	if len(req.Specs) == 0 {
-		return errors2.NewValidationError("specs", len(req.Specs), ErrEncodeFailure)
+		return bacneterrors.NewValidationError("specs", len(req.Specs), ErrEncodeFailure)
 	}
 
 	for i, spec := range req.Specs {
 		if !spec.ObjectIdentifier.ObjectType().Valid() {
-			return errors2.NewValidationError(fmt.Sprintf("specs[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
+			return bacneterrors.NewValidationError(fmt.Sprintf("specs[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
 		}
 		if len(spec.Properties) == 0 {
-			return errors2.NewValidationError(fmt.Sprintf("specs[%d].properties", i), len(spec.Properties), ErrEncodeFailure)
+			return bacneterrors.NewValidationError(fmt.Sprintf("specs[%d].properties", i), len(spec.Properties), ErrEncodeFailure)
 		}
 	}
 
@@ -374,14 +374,14 @@ func NewWritePropertyRequest(
 
 func validateWritePropertyRequest(req WritePropertyRequest) error {
 	if !req.ObjectIdentifier.ObjectType().Valid() {
-		return errors2.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
+		return bacneterrors.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
 	}
 	if len(req.PropertyValue) == 0 {
-		return errors2.NewValidationError("property value", len(req.PropertyValue), ErrEncodeFailure)
+		return bacneterrors.NewValidationError("property value", len(req.PropertyValue), ErrEncodeFailure)
 	}
 	if req.Priority != nil {
 		if *req.Priority == 0 || *req.Priority > 16 {
-			return errors2.NewValidationError("priority", *req.Priority, ErrEncodeFailure)
+			return bacneterrors.NewValidationError("priority", *req.Priority, ErrEncodeFailure)
 		}
 	}
 	return nil
@@ -460,23 +460,23 @@ func NewWritePropertyMultipleRequest(writes []WriteAccessSpecification) (WritePr
 
 func validateWritePropertyMultipleRequest(req WritePropertyMultipleRequest) error {
 	if len(req.Writes) == 0 {
-		return errors2.NewValidationError("writes", len(req.Writes), ErrEncodeFailure)
+		return bacneterrors.NewValidationError("writes", len(req.Writes), ErrEncodeFailure)
 	}
 
 	for i, spec := range req.Writes {
 		if !spec.ObjectIdentifier.ObjectType().Valid() {
-			return errors2.NewValidationError(fmt.Sprintf("writes[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
+			return bacneterrors.NewValidationError(fmt.Sprintf("writes[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
 		}
 		if len(spec.Values) == 0 {
-			return errors2.NewValidationError(fmt.Sprintf("writes[%d].values", i), len(spec.Values), ErrEncodeFailure)
+			return bacneterrors.NewValidationError(fmt.Sprintf("writes[%d].values", i), len(spec.Values), ErrEncodeFailure)
 		}
 		for j, v := range spec.Values {
 			if len(v.PropertyValue) == 0 {
-				return errors2.NewValidationError(fmt.Sprintf("writes[%d].values[%d].property value", i, j), len(v.PropertyValue), ErrEncodeFailure)
+				return bacneterrors.NewValidationError(fmt.Sprintf("writes[%d].values[%d].property value", i, j), len(v.PropertyValue), ErrEncodeFailure)
 			}
 			if v.Priority != nil {
 				if *v.Priority == 0 || *v.Priority > 16 {
-					return errors2.NewValidationError(fmt.Sprintf("writes[%d].values[%d].priority", i, j), *v.Priority, ErrEncodeFailure)
+					return bacneterrors.NewValidationError(fmt.Sprintf("writes[%d].values[%d].priority", i, j), *v.Priority, ErrEncodeFailure)
 				}
 			}
 		}
@@ -648,31 +648,31 @@ func NewReadRangeRequest(
 
 func validateReadRangeRequest(req ReadRangeRequest) error {
 	if !req.ObjectIdentifier.ObjectType().Valid() {
-		return errors2.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
+		return bacneterrors.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
 	}
 
 	variantCount := 0
 	if req.ByPosition != nil {
 		variantCount++
 		if req.ByPosition.Count == 0 {
-			return errors2.NewValidationError("by position count", req.ByPosition.Count, ErrEncodeFailure)
+			return bacneterrors.NewValidationError("by position count", req.ByPosition.Count, ErrEncodeFailure)
 		}
 	}
 	if req.BySequenceNumber != nil {
 		variantCount++
 		if req.BySequenceNumber.Count == 0 {
-			return errors2.NewValidationError("by sequence number count", req.BySequenceNumber.Count, ErrEncodeFailure)
+			return bacneterrors.NewValidationError("by sequence number count", req.BySequenceNumber.Count, ErrEncodeFailure)
 		}
 	}
 	if req.ByTime != nil {
 		variantCount++
 		if req.ByTime.Count == 0 {
-			return errors2.NewValidationError("by time count", req.ByTime.Count, ErrEncodeFailure)
+			return bacneterrors.NewValidationError("by time count", req.ByTime.Count, ErrEncodeFailure)
 		}
 	}
 
 	if variantCount != 1 {
-		return errors2.NewValidationError("range variant", variantCount, ErrEncodeFailure)
+		return bacneterrors.NewValidationError("range variant", variantCount, ErrEncodeFailure)
 	}
 
 	return nil

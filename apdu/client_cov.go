@@ -13,13 +13,6 @@ import (
 	bacencoding "go.wdy.de/bacnet/encoding"
 )
 
-// subscribeCOVServiceChoice is the BACnet confirmed-service choice value for SubscribeCOV.
-//
-// It intentionally remains unexported because ServiceChoice is shared across both
-// confirmed and unconfirmed services in this prototype, and the numeric value 5
-// overlaps with the unconfirmed TextMessage service choice.
-const subscribeCOVServiceChoice ServiceChoice = ServiceChoiceSubscribeCOV
-
 // SubscriberProcessIdentifier identifies a client-local COV subscription process.
 type SubscriberProcessIdentifier uint32
 
@@ -79,7 +72,7 @@ func (c *clientImpl) SubscribeCOV(ctx context.Context, dst netprim.Address, req 
 		return err
 	}
 
-	ackPayload, err := c.invokeConfirmedRawServiceChoice(ctx, dst, subscribeCOVServiceChoice, payload)
+	ackPayload, err := c.invokeConfirmedRawServiceChoice(ctx, dst, ServiceChoiceSubscribeCOV, payload)
 	if err != nil {
 		return err
 	}

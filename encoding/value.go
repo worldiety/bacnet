@@ -166,7 +166,7 @@ func EncodeBooleanValue(v bool) []byte {
 	return []byte{0}
 }
 
-// DecodeBooleanValue decodes a BACnet Boolean value from the LVT field.
+// DecodeBooleanByte decodes a BACnet Boolean value from the LVT field.
 // raw must be the LVT nibble (lower 3 bits of the tag byte), not the full tag byte.
 // Callers that have already parsed the tag header should use the LVT value directly.
 // For convenience when the raw value byte is 0 or 1, use DecodeBooleanByte.

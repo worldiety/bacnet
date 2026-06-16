@@ -3,11 +3,11 @@ package bip
 import "errors"
 
 var (
-	ErrInvalidBVLCType      = errors.New("invalid BVLC type")
-	ErrInvalidFunction      = errors.New("invalid BVLC function")
-	ErrInvalidLength        = errors.New("invalid BVLC length")
-	ErrFrameTooShort        = errors.New("BVLC frame too short")
-	ErrInvalidIPAddress     = errors.New("invalid ip address")
+	ErrInvalidBVLCType = errors.New("invalid BVLC type")
+	ErrInvalidFunction = errors.New("invalid BVLC function")
+	ErrInvalidLength   = errors.New("invalid BVLC length")
+	ErrFrameTooShort   = errors.New("BVLC frame too short")
+
 	ErrNilDatagramConn      = errors.New("nil datagram conn")
 	ErrNilTransport         = errors.New("nil transport")
 	ErrNilASE               = errors.New("nil ASE")

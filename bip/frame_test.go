@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/netip"
 	"testing"
+
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 )
 
 func TestNewFrameCopiesPayload(t *testing.T) {
@@ -85,7 +87,7 @@ func TestNewFrameForAddressChoosesType(t *testing.T) {
 	}{
 		{name: "ipv4", addr: netip.MustParseAddr("192.168.10.20"), wantType: BVLCTypeBACnetIP},
 		{name: "ipv6", addr: netip.MustParseAddr("2001:db8::1"), wantType: BVLCTypeBACnetIP6},
-		{name: "invalid", addr: netip.Addr{}, wantErr: ErrInvalidIPAddress},
+		{name: "invalid", addr: netip.Addr{}, wantErr: bacneterrors.ErrInvalidIPAddress},
 	}
 
 	for _, tt := range tests {

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	errors2 "go.wdy.de/bacnet/common/errors"
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 	"go.wdy.de/bacnet/common/log"
 	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/internal/util"
@@ -132,15 +132,15 @@ func (r *routerImpl) bestRouteLocked(network netprim.NetworkNumber) (routeRecord
 
 func validateRoute(network netprim.NetworkNumber, _ PortID, portInfo []byte) error {
 	if network.IsLocal() {
-		return errors2.NewValidationError("network", network, ErrRouteToLocalNetwork)
+		return bacneterrors.NewValidationError("network", network, ErrRouteToLocalNetwork)
 	}
 
 	if network.IsGlobalBroadcast() {
-		return errors2.NewValidationError("network", network, ErrInvalidRoute)
+		return bacneterrors.NewValidationError("network", network, ErrInvalidRoute)
 	}
 
 	if len(portInfo) > 255 {
-		return errors2.NewValidationError("port info", len(portInfo), ErrInvalidRoute)
+		return bacneterrors.NewValidationError("port info", len(portInfo), ErrInvalidRoute)
 	}
 
 	return nil
@@ -256,7 +256,7 @@ func buildRejectResponse(dnet netprim.NetworkNumber, reason npdu.NlmRejectReason
 // Network-layer messages are always delivered locally in addition to any forwarding action.
 func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataUnit) (Decision, error) {
 	if pdu == nil || !pdu.Valid() {
-		return Decision{}, errors2.NewValidationError("npdu", pdu, ErrInvalidNPDU)
+		return Decision{}, bacneterrors.NewValidationError("npdu", pdu, ErrInvalidNPDU)
 	}
 
 	log.Logger.Debug(
@@ -299,7 +299,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	}
 
 	if pdu.DNET() == nil {
-		return Decision{}, errors2.NewValidationError("dnet", pdu, ErrInvalidNPDU)
+		return Decision{}, bacneterrors.NewValidationError("dnet", pdu, ErrInvalidNPDU)
 	}
 
 	dnet := netprim.NetworkNumber(*pdu.DNET())

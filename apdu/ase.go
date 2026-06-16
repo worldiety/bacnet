@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	errors2 "go.wdy.de/bacnet/common/errors"
+	bacneterrors "go.wdy.de/bacnet/common/errors"
 	"go.wdy.de/bacnet/common/log"
 	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
@@ -126,7 +126,7 @@ type segmentedServerKey string
 // segmentedServerKeyFor returns the map key for an in-progress segmented
 // server transaction identified by its source address and invoke ID.
 func segmentedServerKeyFor(src netprim.Address, id InvokeID) segmentedServerKey {
-	return segmentedServerKey(fmt.Sprintf("%d:%x:%d", id, src.MACBytes(), src.Network))
+	return segmentedServerKey(fmt.Sprintf("%d:%x:%d", id, src.AddrPortBytes(), src.Network))
 }
 
 type transaction struct {
@@ -205,19 +205,19 @@ func NewASE(cfg ASEConfig, transport NPDUTransport) (ASE, error) {
 	}
 
 	if cfg.InvokeTimeout <= 0 {
-		return nil, errors2.NewValidationError("invoke timeout", cfg.InvokeTimeout, ErrInvalidASEConfig)
+		return nil, bacneterrors.NewValidationError("invoke timeout", cfg.InvokeTimeout, ErrInvalidASEConfig)
 	}
 
 	if cfg.MaxConcurrentInvokes <= 0 {
-		return nil, errors2.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
+		return nil, bacneterrors.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
 	}
 
 	if cfg.PreferredWindowSize > 127 {
-		return nil, errors2.NewValidationError("preferred window size", cfg.PreferredWindowSize, ErrInvalidASEConfig)
+		return nil, bacneterrors.NewValidationError("preferred window size", cfg.PreferredWindowSize, ErrInvalidASEConfig)
 	}
 
 	if cfg.SegmentedRequestTimeout < 0 {
-		return nil, errors2.NewValidationError("segmented request timeout", cfg.SegmentedRequestTimeout, ErrInvalidASEConfig)
+		return nil, bacneterrors.NewValidationError("segmented request timeout", cfg.SegmentedRequestTimeout, ErrInvalidASEConfig)
 	}
 
 	// Default PreferredWindowSize to 1 (minimum value mandated by the standard).
@@ -303,11 +303,11 @@ func (a *aseImpl) Close() error {
 // RegisterConfirmed registers a confirmed request handler for a service choice.
 func (a *aseImpl) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error {
 	if handler == nil {
-		return errors2.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return bacneterrors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	if !IsConfirmedServiceChoice(choice) {
-		return errors2.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
+		return bacneterrors.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
 	}
 
 	a.mu.Lock()
@@ -323,11 +323,11 @@ func (a *aseImpl) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandl
 // RegisterUnconfirmed registers an unconfirmed request handler for a service choice.
 func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error {
 	if handler == nil {
-		return errors2.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return bacneterrors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	if !IsUnconfirmedServiceChoice(choice) {
-		return errors2.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
+		return bacneterrors.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
 	}
 
 	a.mu.Lock()
@@ -343,11 +343,11 @@ func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedH
 // BeginConfirmedServiceRequest sends a confirmed request and waits for B-X.confirm.
 func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req ConfirmedRequestICI) (ConfirmICI, error) {
 	if !req.Priority.Valid() {
-		return ConfirmICI{}, errors2.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
+		return ConfirmICI{}, bacneterrors.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
 	}
 
 	if !IsConfirmedServiceChoice(req.ServiceRequest.ServiceChoice) {
-		return ConfirmICI{}, errors2.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
+		return ConfirmICI{}, bacneterrors.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
 	}
 
 	if a.segmentationRequiredConfirmed(len(req.ServiceRequest.Payload)) {
@@ -454,11 +454,11 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 // SendUnconfirmed sends an unconfirmed request.
 func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI) error {
 	if !req.Priority.Valid() {
-		return errors2.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
+		return bacneterrors.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
 	}
 
 	if !IsUnconfirmedServiceChoice(req.ServiceRequest.ServiceChoice) {
-		return errors2.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
+		return bacneterrors.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
 	}
 	if a.segmentationRequiredUnconfirmed(len(req.ServiceRequest.Payload)) {
 		return ErrSegmentationNotSupported
@@ -496,7 +496,7 @@ func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI
 // through internal state-machine and dispatch paths without re-cloning.
 func (a *aseImpl) OnInboundNPDU(ctx context.Context, src netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
 	if !packet.Valid() {
-		return errors2.NewValidationError("npdu", packet, ErrDecodeFailure)
+		return bacneterrors.NewValidationError("npdu", packet, ErrDecodeFailure)
 	}
 	if packet.IsNetworkLayerMessage() {
 		return ErrInvalidPDUType
@@ -506,7 +506,7 @@ func (a *aseImpl) OnInboundNPDU(ctx context.Context, src netprim.Address, packet
 	log.Logger.Debug(
 		"apdu inbound npdu",
 		"src_network", src.Network,
-		"src_mac_length", len(src.MACBytes()),
+		"src_mac_length", len(src.AddrPortBytes()),
 		"priority", packet.Priority(),
 		"payload_bytes", len(apduBytes),
 	)
@@ -541,7 +541,7 @@ func (a *aseImpl) OnInboundNPDU(ctx context.Context, src netprim.Address, packet
 	case PDUTypeSimpleACK, PDUTypeComplexACK, PDUTypeError, PDUTypeReject, PDUTypeAbort:
 		return a.completeTransaction(ctx, src, packet.Priority(), decoded)
 	default:
-		return errors2.NewValidationError("pdu type", decoded.Type, ErrInvalidPDUType)
+		return bacneterrors.NewValidationError("pdu type", decoded.Type, ErrInvalidPDUType)
 	}
 }
 
@@ -586,8 +586,8 @@ func (a *aseImpl) startTransaction(
 				requestPayloadLength: requestPayloadLength,
 			}),
 			expectedPeer: netprim.Address{
-				Network: expectedPeer.Network,
-				MAC:     slices.Clone(expectedPeer.MAC),
+				Network:  expectedPeer.Network,
+				AddrPort: expectedPeer.AddrPort,
 			},
 			expectedServiceChoice: expectedServiceChoice,
 		}
@@ -634,9 +634,12 @@ func (a *aseImpl) syncSegmentedServerResponseEntry(src netprim.Address, priority
 	machine.SetSegmentTimeout(expiresAt)
 
 	a.outboundSegmentedServerEntries[key] = &segmentedServerResponseEntry{
-		machine:   machine,
-		priority:  priority,
-		src:       netprim.Address{Network: src.Network, MAC: slices.Clone(src.MAC)},
+		machine:  machine,
+		priority: priority,
+		src: netprim.Address{
+			Network:  src.Network,
+			AddrPort: src.AddrPort,
+		},
 		expiresAt: expiresAt,
 	}
 }
@@ -732,7 +735,7 @@ func (a *aseImpl) handleUnsegmentedConfirmedRequest(ctx context.Context, src net
 			"invoke_id", in.InvokeID,
 			"service_choice", in.ServiceChoice,
 			"src_network", src.Network,
-			"src_mac_length", len(src.MACBytes()),
+			"src_mac_length", len(src.AddrPortBytes()),
 		)
 		return nil // duplicate while handler is running; drop silently (§5.4.4)
 	}
@@ -1016,14 +1019,14 @@ func (a *aseImpl) dispatchToHandler(ctx context.Context, src netprim.Address, pr
 	if result.InvokeID != in.InvokeID {
 		return a.handleConfirmedServerFailure(
 			ctx, src, priority, machine,
-			errors2.NewValidationError("invoke id", result.InvokeID, ErrInvalidASEConfig),
+			bacneterrors.NewValidationError("invoke id", result.InvokeID, ErrInvalidASEConfig),
 			ConfirmedResponseTypeReject,
 		)
 	}
 	if !result.Destination.Equal(src) {
 		return a.handleConfirmedServerFailure(
 			ctx, src, priority, machine,
-			errors2.NewValidationError("destination", result.Destination, ErrInvalidASEConfig),
+			bacneterrors.NewValidationError("destination", result.Destination, ErrInvalidASEConfig),
 			ConfirmedResponseTypeReject,
 		)
 	}
@@ -1214,7 +1217,7 @@ func (a *aseImpl) completeTransaction(ctx context.Context, src netprim.Address, 
 
 	event, err := machineEventForInboundTerminalPDU(in.Type)
 	if err != nil {
-		return errors2.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+		return bacneterrors.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
 	}
 
 	// The machine builds the transactionResult from the inbound APDU so
@@ -1319,7 +1322,7 @@ func (a *aseImpl) timedOutCollector() {
 					"error", err,
 					"invoke_id", entry.machine.variables.invokeID,
 					"src_network", entry.src.Network,
-					"src_mac_length", len(entry.src.MACBytes()),
+					"src_mac_length", len(entry.src.AddrPortBytes()),
 				)
 
 				continue
@@ -1331,7 +1334,7 @@ func (a *aseImpl) timedOutCollector() {
 						"error", sendErr,
 						"invoke_id", entry.machine.variables.invokeID,
 						"src_network", entry.src.Network,
-						"src_mac_length", len(entry.src.MACBytes()),
+						"src_mac_length", len(entry.src.AddrPortBytes()),
 					)
 				}
 			}
@@ -1342,7 +1345,7 @@ func (a *aseImpl) timedOutCollector() {
 
 func buildOutboundNPDU(dst netprim.Address, priority netprim.NetworkPriority, expectingReply bool, apdu outboundAPDU) (npdu.NetworkLayerProtocolDataUnit, error) {
 	if !priority.Valid() {
-		return npdu.NetworkLayerProtocolDataUnit{}, errors2.NewValidationError("priority", priority, ErrInvalidASEConfig)
+		return npdu.NetworkLayerProtocolDataUnit{}, bacneterrors.NewValidationError("priority", priority, ErrInvalidASEConfig)
 	}
 
 	apduBytes, err := encodeAPDU(apdu)
@@ -1367,7 +1370,7 @@ func buildOutboundNPDU(dst netprim.Address, priority netprim.NetworkPriority, ex
 
 	packet, err := npdu.NewRoutedAPDU(
 		npdu.UltimateDestinationNetworkNumber(dst.Network),
-		npdu.UltimateDestinationMacLayerAddress(dst.MACBytes()),
+		npdu.UltimateDestinationMacLayerAddress(dst.AddrPortBytes()),
 		255,
 		priority,
 		expectingReply,

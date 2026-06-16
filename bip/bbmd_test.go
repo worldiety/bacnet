@@ -68,7 +68,7 @@ func TestNewBBMDValidBDT(t *testing.T) {
 }
 
 func TestNewBBMDInvalidBDTEntryRejected(t *testing.T) {
-	// An zero-value BdtEntry is invalid (nil mask triggers Valid() == false via index panic guard,
+	// A zero-value BdtEntry is invalid (nil mask triggers Valid() == false via index panic guard,
 	// but NewBDT validates before constructing — this tests the constructor validation path).
 	// Construct an invalid entry by direct struct literal (same package).
 	invalid := BdtEntry{} // zero value: address invalid, mask nil
@@ -167,8 +167,8 @@ func TestHandleRegisterForeignDeviceAppearsInFDT(t *testing.T) {
 func TestHandleRegisterForeignDeviceRenewal(t *testing.T) {
 	b := emptyBBMD(t)
 	// Register twice from the same address — second registration must replace the first.
-	b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(30))  //nolint
-	b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(120)) //nolint
+	_, _ = b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(30))  //nolint
+	_, _ = b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(120)) //nolint
 
 	ack, _ := b.HandleReadForeignDeviceTable(NewReadForeignDeviceTable())
 	if len(ack.Entries()) != 1 {
@@ -221,7 +221,7 @@ func TestHandleReadForeignDeviceTablePurgesExpiredEntries(t *testing.T) {
 
 func TestHandleReadForeignDeviceTableRemainingTTLDecreases(t *testing.T) {
 	b := emptyBBMD(t)
-	b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(60)) //nolint
+	_, _ = b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(60)) //nolint
 
 	ack, _ := b.HandleReadForeignDeviceTable(NewReadForeignDeviceTable())
 	entries := ack.Entries()
@@ -268,7 +268,7 @@ func TestHandleDeleteForeignDeviceTableEntryNotFoundNak(t *testing.T) {
 
 func TestHandleDeleteForeignDeviceTableEntrySuccess(t *testing.T) {
 	b := emptyBBMD(t)
-	b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(60)) //nolint
+	_, _ = b.HandleRegisterForeignDevice(validSrc, mustRegisterFD(60)) //nolint
 
 	entry, err := NewFdtEntry(validSrc, 60)
 	if err != nil {
@@ -329,7 +329,7 @@ func TestHandleWriteBroadcastDistributionTableReplacesBDT(t *testing.T) {
 		mustBdtEntry("10.2.0.1:47808", net.IPv4Mask(255, 255, 255, 0)),
 	}
 	req, _ := NewWriteBroadcastDistributionTable(replacement)
-	b.HandleWriteBroadcastDistributionTable(req) //nolint
+	_, _ = b.HandleWriteBroadcastDistributionTable(req) //nolint
 
 	ack, err := b.HandleReadBroadcastDistributionTable(NewReadBroadcastDistributionTable())
 	if err != nil {
