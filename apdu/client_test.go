@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	bacencoding "go.wdy.de/bacnet/encoding"
 	"go.wdy.de/bacnet/npdu"
 )
@@ -40,8 +41,8 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestWhoIsValidation(t *testing.T) {
-	one, _ := bacnet.NewDeviceInstance(1)
-	two, _ := bacnet.NewDeviceInstance(2)
+	one, _ := types.NewDeviceInstance(1)
+	two, _ := types.NewDeviceInstance(2)
 
 	tests := []struct {
 		name    string
@@ -65,9 +66,9 @@ func TestWhoIsValidation(t *testing.T) {
 }
 
 func TestWhoHasValidation(t *testing.T) {
-	one, _ := bacnet.NewDeviceInstance(1)
-	two, _ := bacnet.NewDeviceInstance(2)
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 11)
+	one, _ := types.NewDeviceInstance(1)
+	two, _ := types.NewDeviceInstance(2)
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 11)
 
 	name := "AI-11"
 	nonASCII := "Raum-ä"
@@ -106,7 +107,7 @@ func TestClientWhoIs(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	if err := client.WhoIs(context.Background(), dst, WhoIsRequest{}); err != nil {
 		t.Fatalf("WhoIs (all devices): %v", err)
@@ -127,8 +128,8 @@ func TestClientWhoIs(t *testing.T) {
 		t.Fatalf("payload len = %d, want 0", len(decoded.Payload))
 	}
 
-	low, _ := bacnet.NewDeviceInstance(1)
-	high, _ := bacnet.NewDeviceInstance(1024)
+	low, _ := types.NewDeviceInstance(1)
+	high, _ := types.NewDeviceInstance(1024)
 	rangeReq := WhoIsRequest{LowLimit: &low, HighLimit: &high}
 
 	if err := client.WhoIs(context.Background(), dst, rangeReq); err != nil {
@@ -163,8 +164,8 @@ func TestClientWhoHas(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 
 	reqByID := WhoHasRequest{ObjectIdentifier: &objID}
 	if err := client.WhoHas(context.Background(), dst, reqByID); err != nil {
@@ -213,12 +214,12 @@ func TestClientReadProperty(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	arrayIndex := uint32(3)
 	req := ReadPropertyRequest{
 		ObjectIdentifier:   objID,
-		PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+		PropertyIdentifier: types.PropertyIdentifierPresentValue,
 		ArrayIndex:         &arrayIndex,
 	}
 
@@ -280,7 +281,7 @@ func TestClientReadProperty(t *testing.T) {
 		t.Fatalf("encodeAPDU ack: %v", err)
 	}
 
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackAPDU)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackAPDU)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -320,7 +321,7 @@ func TestClientInvokeConfirmedRaw(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	type result struct {
 		payload []byte
@@ -344,7 +345,7 @@ func TestClientInvokeConfirmedRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	ack, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ack, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err := ase.OnInboundNPDU(context.Background(), dst, *ack); err != nil {
 		t.Fatalf("OnInboundNPDU: %v", err)
 	}
@@ -367,7 +368,7 @@ func TestClientInvokeConfirmedRawInvalidServiceChoice(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 	_, err = client.InvokeConfirmedRaw(context.Background(), dst, ServiceChoiceWhoIs, nil)
 	if !errors.Is(err, ErrInvalidServiceChoice) {
 		t.Fatalf("err = %v, want %v", err, ErrInvalidServiceChoice)
@@ -392,8 +393,8 @@ func TestClientHandleIAm(t *testing.T) {
 		t.Fatalf("HandleIAm: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1234)
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1234)
 	payload := encodeIAmPayloadForTest(objID, 1476, SegmentationSupportNo, 117)
 
 	apduBytes, err := encodeAPDU(outboundAPDU{
@@ -405,7 +406,7 @@ func TestClientHandleIAm(t *testing.T) {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
 
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -464,7 +465,7 @@ func TestClientHandleIAmMalformedPayload(t *testing.T) {
 		t.Fatalf("HandleIAm: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
 	apduBytes, err := encodeAPDU(outboundAPDU{
 		Type:          PDUTypeUnconfirmedRequest,
 		ServiceChoice: ServiceChoiceIAm,
@@ -474,7 +475,7 @@ func TestClientHandleIAmMalformedPayload(t *testing.T) {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
 
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -502,9 +503,9 @@ func TestClientHandleIHave(t *testing.T) {
 		t.Fatalf("HandleIHave: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
-	devID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1234)
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
+	devID, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1234)
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	payload := encodeIHavePayloadForTest(devID, objID, "AI-7")
 
 	apduBytes, err := encodeAPDU(outboundAPDU{
@@ -516,7 +517,7 @@ func TestClientHandleIHave(t *testing.T) {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
 
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -572,7 +573,7 @@ func TestClientHandleIHaveMalformedPayload(t *testing.T) {
 		t.Fatalf("HandleIHave: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
 	apduBytes, err := encodeAPDU(outboundAPDU{
 		Type:          PDUTypeUnconfirmedRequest,
 		ServiceChoice: ServiceChoiceIHave,
@@ -582,7 +583,7 @@ func TestClientHandleIHaveMalformedPayload(t *testing.T) {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
 
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -600,7 +601,7 @@ func decodeReadPropertyRequestPayload(payload []byte) (ReadPropertyRequest, erro
 	if len(objValue) != 4 {
 		return ReadPropertyRequest{}, errors.New("invalid object identifier length")
 	}
-	obj := bacnet.ObjectIdentifier(uint32(objValue[0])<<24 | uint32(objValue[1])<<16 | uint32(objValue[2])<<8 | uint32(objValue[3]))
+	obj := types.ObjectIdentifier(uint32(objValue[0])<<24 | uint32(objValue[1])<<16 | uint32(objValue[2])<<8 | uint32(objValue[3]))
 
 	_, propValue, next2, err := decodeExpectedContextPrimitive(payload, next, 1)
 	if err != nil {
@@ -611,7 +612,7 @@ func decodeReadPropertyRequestPayload(payload []byte) (ReadPropertyRequest, erro
 		return ReadPropertyRequest{}, err
 	}
 
-	res := ReadPropertyRequest{ObjectIdentifier: obj, PropertyIdentifier: bacnet.PropertyIdentifier(propID)}
+	res := ReadPropertyRequest{ObjectIdentifier: obj, PropertyIdentifier: types.PropertyIdentifier(propID)}
 	if next2 < len(payload) {
 		_, arrValue, end, arrErr := decodeExpectedContextPrimitive(payload, next2, 2)
 		if arrErr != nil {
@@ -650,7 +651,7 @@ func encodeReadPropertyACKPayload(ack ReadPropertyACK) ([]byte, error) {
 	return out, nil
 }
 
-func encodeIAmPayloadForTest(deviceIdentifier bacnet.ObjectIdentifier, maxAPDU MaxApduLengthAccepted, segmentation SegmentationSupport, vendorID uint16) []byte {
+func encodeIAmPayloadForTest(deviceIdentifier types.ObjectIdentifier, maxAPDU MaxApduLengthAccepted, segmentation SegmentationSupport, vendorID uint16) []byte {
 	out := make([]byte, 0, 12)
 	out = append(out, byte(12<<4)|4)
 	rawObj := uint32(deviceIdentifier)
@@ -671,7 +672,7 @@ func encodeIAmPayloadForTest(deviceIdentifier bacnet.ObjectIdentifier, maxAPDU M
 	return out
 }
 
-func encodeIHavePayloadForTest(deviceIdentifier bacnet.ObjectIdentifier, objectIdentifier bacnet.ObjectIdentifier, objectName string) []byte {
+func encodeIHavePayloadForTest(deviceIdentifier types.ObjectIdentifier, objectIdentifier types.ObjectIdentifier, objectName string) []byte {
 	out := make([]byte, 0, 16+len(objectName))
 
 	rawDev := uint32(deviceIdentifier)

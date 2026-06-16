@@ -1,8 +1,11 @@
-package bacnet
+package types
 
 import (
 	"errors"
 	"testing"
+
+	errors2 "go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 func TestNewDeviceInstance(t *testing.T) {
@@ -12,8 +15,8 @@ func TestNewDeviceInstance(t *testing.T) {
 		wantErr error
 	}{
 		{name: "valid", input: 42},
-		{name: "max", input: MaxInstanceNumber},
-		{name: "invalid", input: MaxInstanceNumber + 1, wantErr: ErrInvalidDeviceInstance},
+		{name: "max", input: netprim.MaxInstanceNumber},
+		{name: "invalid", input: netprim.MaxInstanceNumber + 1, wantErr: errors2.ErrInvalidDeviceInstance},
 	}
 
 	for _, tt := range tests {
@@ -37,11 +40,11 @@ func TestNewDeviceInstance(t *testing.T) {
 }
 
 func TestDeviceInstanceValid(t *testing.T) {
-	if !DeviceInstance(MaxInstanceNumber).Valid() {
+	if !DeviceInstance(netprim.MaxInstanceNumber).Valid() {
 		t.Fatal("max valid device instance should be valid")
 	}
 
-	if DeviceInstance(MaxInstanceNumber + 1).Valid() {
+	if DeviceInstance(netprim.MaxInstanceNumber + 1).Valid() {
 		t.Fatal("out-of-range device instance should be invalid")
 	}
 }
@@ -66,11 +69,11 @@ func TestNewObjectIdentifier(t *testing.T) {
 }
 
 func TestNewObjectIdentifierRejectsInvalidInput(t *testing.T) {
-	if _, err := NewObjectIdentifier(MaxObjectType+1, 1); !errors.Is(err, ErrInvalidObjectType) {
+	if _, err := NewObjectIdentifier(ObjectTypeMax+1, 1); !errors.Is(err, errors2.ErrInvalidObjectType) {
 		t.Fatalf("expected ErrInvalidObjectType, got %v", err)
 	}
 
-	if _, err := NewObjectIdentifier(ObjectTypeDevice, MaxInstanceNumber+1); !errors.Is(err, ErrInvalidObjectInstance) {
+	if _, err := NewObjectIdentifier(ObjectTypeDevice, netprim.MaxInstanceNumber+1); !errors.Is(err, errors2.ErrInvalidObjectInstance) {
 		t.Fatalf("expected ErrInvalidObjectInstance, got %v", err)
 	}
 }
@@ -106,11 +109,11 @@ func TestPropertyIdentifierString(t *testing.T) {
 }
 
 func TestNetworkNumberHelpers(t *testing.T) {
-	if !LocalNetwork.IsLocal() {
+	if !netprim.LocalNetwork.IsLocal() {
 		t.Fatal("LocalNetwork should be local")
 	}
 
-	if !GlobalBroadcastNetwork.IsGlobalBroadcast() {
+	if !netprim.GlobalBroadcastNetwork.IsGlobalBroadcast() {
 		t.Fatal("GlobalBroadcastNetwork should be a global broadcast")
 	}
 }
@@ -144,5 +147,3 @@ func TestObjectTypeString(t *testing.T) {
 		})
 	}
 }
-
-

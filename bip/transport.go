@@ -5,7 +5,9 @@ import (
 	"net"
 	"net/netip"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 const (
@@ -46,15 +48,15 @@ func (c *connection) Close() error {
 func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 	network, err := udpNetworkForAddress(addr)
 	if err != nil {
-		bacnet.Logger.Error("bip transport select udp network", "error", err, "addr", addr)
+		log.Logger.Error("bip transport select udp network", "error", err, "addr", addr)
 		return nil, err
 	}
 
-	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, bacnet.IpDefaultUdpPort))
+	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, netprim.IpDefaultUdpPort))
 
 	conn, err := net.ListenUDP(network, udpAddr)
 	if err != nil {
-		bacnet.Logger.Error("bip transport listen udp", "error", err, "network", network, "addr", udpAddr)
+		log.Logger.Error("bip transport listen udp", "error", err, "network", network, "addr", udpAddr)
 		return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
 	}
 
@@ -65,7 +67,7 @@ func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 
 func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if !addr.IsValid() {
-		return "", bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+		return "", errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return "udp4", nil
@@ -73,12 +75,12 @@ func udpNetworkForAddress(addr netip.Addr) (string, error) {
 	if addr.Is6() {
 		return "udp6", nil
 	}
-	return "", bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+	return "", errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 }
 
 func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if !addr.IsValid() {
-		return 0, bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+		return 0, errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 	}
 	if addr.Is4() {
 		return BVLCTypeBACnetIP, nil
@@ -86,7 +88,7 @@ func bvlcTypeForAddress(addr netip.Addr) (BVLCType, error) {
 	if addr.Is6() {
 		return BVLCTypeBACnetIP6, nil
 	}
-	return 0, bacnet.NewValidationError("ip address", addr, ErrInvalidIPAddress)
+	return 0, errors.NewValidationError("ip address", addr, ErrInvalidIPAddress)
 }
 
 // Transport sends and receives BVLC frames via UDP-like datagrams.
@@ -105,7 +107,7 @@ func NewTransport(conn DatagramConn, maxDatagramSize int) (*Transport, error) {
 		return nil, ErrNilDatagramConn
 	}
 	if maxDatagramSize < BVLCHeaderLen {
-		return nil, bacnet.NewValidationError("max datagram size", maxDatagramSize, ErrInvalidLength)
+		return nil, errors.NewValidationError("max datagram size", maxDatagramSize, ErrInvalidLength)
 	}
 
 	return &Transport{conn: conn, maxDatagramSize: maxDatagramSize}, nil
@@ -118,13 +120,13 @@ func (t *Transport) ReceiveFrame() (Frame, netip.AddrPort, error) {
 	buf := make([]byte, t.maxDatagramSize)
 	n, addr, err := t.conn.ReadFromUDPAddrPort(buf)
 	if err != nil {
-		bacnet.Logger.Error("bip transport read datagram", "error", err)
+		log.Logger.Error("bip transport read datagram", "error", err)
 		return Frame{}, netip.AddrPort{}, fmt.Errorf("%w: %v", ErrReadFailure, err)
 	}
 
 	frame, err := DecodeFrame(buf[:n])
 	if err != nil {
-		bacnet.Logger.Error("bip transport decode frame", "error", err, "bytes", n)
+		log.Logger.Error("bip transport decode frame", "error", err, "bytes", n)
 		return Frame{}, netip.AddrPort{}, err
 	}
 	return frame, addr, nil
@@ -134,15 +136,15 @@ func (t *Transport) ReceiveFrame() (Frame, netip.AddrPort, error) {
 func (t *Transport) SendFrame(addr netip.AddrPort, frame Frame) error {
 	raw, err := frame.Encode()
 	if err != nil {
-		bacnet.Logger.Error("bip transport encode frame", "error", err, "dst", addr)
+		log.Logger.Error("bip transport encode frame", "error", err, "dst", addr)
 		return err
 	}
 	if len(raw) > t.maxDatagramSize {
-		return bacnet.NewValidationError("datagram length", len(raw), ErrDatagramTooLarge)
+		return errors.NewValidationError("datagram length", len(raw), ErrDatagramTooLarge)
 	}
 
 	if _, err := t.conn.WriteToUDPAddrPort(raw, addr); err != nil {
-		bacnet.Logger.Error("bip transport write datagram", "error", err, "dst", addr, "bytes", len(raw))
+		log.Logger.Error("bip transport write datagram", "error", err, "dst", addr, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil

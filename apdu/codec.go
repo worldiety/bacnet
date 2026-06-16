@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
 )
 
 const (
@@ -54,11 +54,11 @@ type outboundAPDU struct {
 
 func encodeAPDU(apdu outboundAPDU) ([]byte, error) {
 	if apdu.Type > PDUTypeAbort {
-		return nil, bacnet.NewValidationError("pdu type", apdu.Type, ErrInvalidPDUType)
+		return nil, errors.NewValidationError("pdu type", apdu.Type, ErrInvalidPDUType)
 	}
 
 	if apdu.MaxSegmentsAccepted != 0 && !apdu.MaxSegmentsAccepted.Valid() {
-		return nil, bacnet.NewValidationError("max segments accepted", apdu.MaxSegmentsAccepted, ErrEncodeFailure)
+		return nil, errors.NewValidationError("max segments accepted", apdu.MaxSegmentsAccepted, ErrEncodeFailure)
 	}
 
 	switch apdu.Type {
@@ -133,7 +133,7 @@ func encodeAPDU(apdu outboundAPDU) ([]byte, error) {
 		return out, nil
 	case PDUTypeReject, PDUTypeAbort:
 		if len(apdu.Payload) > 1 {
-			return nil, bacnet.NewValidationError("payload", len(apdu.Payload), ErrEncodeFailure)
+			return nil, errors.NewValidationError("payload", len(apdu.Payload), ErrEncodeFailure)
 		}
 
 		reason := byte(0)
@@ -168,7 +168,7 @@ func encodeAPDU(apdu outboundAPDU) ([]byte, error) {
 		out[3] = apdu.ActualWindowSize
 		return out, nil
 	default:
-		return nil, bacnet.NewValidationError("pdu type", apdu.Type, ErrInvalidPDUType)
+		return nil, errors.NewValidationError("pdu type", apdu.Type, ErrInvalidPDUType)
 	}
 }
 
@@ -179,7 +179,7 @@ func decodeAPDU(raw []byte) (inboundAPDU, error) {
 
 	pduType := PDUType(raw[0] >> 4)
 	if pduType > PDUTypeAbort {
-		return inboundAPDU{}, bacnet.NewValidationError("pdu type", pduType, ErrInvalidPDUType)
+		return inboundAPDU{}, errors.NewValidationError("pdu type", pduType, ErrInvalidPDUType)
 	}
 
 	decoded := inboundAPDU{Type: pduType}
@@ -195,7 +195,7 @@ func decodeAPDU(raw []byte) (inboundAPDU, error) {
 
 		decoded.MaxSegmentsAccepted = MaxSegmentsAccepted((raw[1] >> 4) & 0x07)
 		if !decoded.MaxSegmentsAccepted.Valid() {
-			return inboundAPDU{}, bacnet.NewValidationError("max segments accepted", decoded.MaxSegmentsAccepted, ErrDecodeFailure)
+			return inboundAPDU{}, errors.NewValidationError("max segments accepted", decoded.MaxSegmentsAccepted, ErrDecodeFailure)
 		}
 
 		maxAPDU, err := maxAPDULengthForCode(maxApduLengthCode(raw[1] & 0x0F))
@@ -288,7 +288,7 @@ func decodeAPDU(raw []byte) (inboundAPDU, error) {
 		decoded.ProposedWindowSize = raw[3]
 		return decoded, nil
 	default:
-		return inboundAPDU{}, bacnet.NewValidationError("pdu type", pduType, ErrInvalidPDUType)
+		return inboundAPDU{}, errors.NewValidationError("pdu type", pduType, ErrInvalidPDUType)
 	}
 
 }
@@ -340,7 +340,7 @@ func maxAPDUCodeForLength(length MaxApduLengthAccepted) (maxApduLengthCode, erro
 		return maxAPDULengthAcceptedCode1476Bytes, nil
 	}
 
-	return 0, bacnet.NewValidationError("max APDU length accepted", length, ErrEncodeFailure)
+	return 0, errors.NewValidationError("max APDU length accepted", length, ErrEncodeFailure)
 }
 
 func maxAPDULengthForCode(code maxApduLengthCode) (MaxApduLengthAccepted, error) {
@@ -358,6 +358,6 @@ func maxAPDULengthForCode(code maxApduLengthCode) (MaxApduLengthAccepted, error)
 	case maxAPDULengthAcceptedCode1476Bytes:
 		return maxApduLengthAccepted1476Bytes, nil
 	default:
-		return 0, bacnet.NewValidationError("max APDU length code", code, ErrDecodeFailure)
+		return 0, errors.NewValidationError("max APDU length code", code, ErrDecodeFailure)
 	}
 }

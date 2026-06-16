@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 func TestDecodeNetworkLayerMessageModel(t *testing.T) {
@@ -64,7 +64,7 @@ func TestNewNetworkLayerNPDUFromMessage(t *testing.T) {
 	}
 
 	n, err := NewNetworkLayerNPDUFromMessage(
-		NPCI{Priority: bacnet.NetworkPriorityNormal},
+		NPCI{Priority: netprim.NetworkPriorityNormal},
 		msg,
 	)
 	if err != nil {
@@ -81,7 +81,7 @@ func TestNewNetworkLayerNPDUFromMessage(t *testing.T) {
 }
 
 func TestNetworkLayerMessageModelAccessor(t *testing.T) {
-	n, err := NewNetworkLayerMessage(uint8(NetworkLayerMessageTypeWhatIsNetworkNumber), nil, bacnet.NetworkPriorityNormal)
+	n, err := NewNetworkLayerMessage(uint8(NetworkLayerMessageTypeWhatIsNetworkNumber), nil, netprim.NetworkPriorityNormal)
 	if err != nil {
 		t.Fatalf("NewNetworkLayerMessage: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestNetworkLayerMessageModelAccessor(t *testing.T) {
 }
 
 func TestNetworkLayerMessageModelAccessorForApplicationNPDU(t *testing.T) {
-	n, err := NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	n, err := NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestMustNetworkLayerMessageHeaderPanicsForNilModel(t *testing.T) {
 }
 
 func TestMustNetworkLayerMessageHeaderFromNPDU(t *testing.T) {
-	n, err := NewNetworkLayerMessage(uint8(NetworkLayerMessageTypeWhatIsNetworkNumber), nil, bacnet.NetworkPriorityNormal)
+	n, err := NewNetworkLayerMessage(uint8(NetworkLayerMessageTypeWhatIsNetworkNumber), nil, netprim.NetworkPriorityNormal)
 	if err != nil {
 		t.Fatalf("NewNetworkLayerMessage: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestMustNetworkLayerMessageHeaderFromNPDU(t *testing.T) {
 }
 
 func TestMustNetworkLayerMessageHeaderFromNPDUPanicsForApplication(t *testing.T) {
-	n, err := NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	n, err := NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestNetworkListMessageSemantics(t *testing.T) {
 		{
 			name: "router-list rejects local network",
 			build: func() error {
-				_, err := NewIAmRouterToNetworkMessage([]bacnet.NetworkNumber{bacnet.LocalNetwork})
+				_, err := NewIAmRouterToNetworkMessage([]netprim.NetworkNumber{netprim.LocalNetwork})
 				return err
 			},
 			wantErr: ErrInvalidNetworkNumber,

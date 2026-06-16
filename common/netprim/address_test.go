@@ -1,4 +1,4 @@
-package bacnet
+package netprim
 
 import "testing"
 
@@ -31,4 +31,3 @@ func TestNewAddressRejectsOversizedMAC(t *testing.T) {
 		t.Fatal("expected oversized MAC address error")
 	}
 }
-

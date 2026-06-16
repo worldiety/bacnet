@@ -16,7 +16,11 @@ layer, including a typed client API for common BACnet services.
 
 | Package | Purpose |
 |---|---|
-| `.` (`bacnet`) | Constants, core types, errors, addressing primitives |
+| `.` (`bacnet`) | Package root — will be populated with higher-level types and functions in a later restructuring step |
+| `common/errors/` | `ValidationError`, `NewValidationError`, shared `ErrInvalid*` sentinels |
+| `common/log/` | Package-level `Logger` (`*slog.Logger`) used by all packages |
+| `common/netprim/` | Network primitives: `NetworkNumber`, `NetworkPriority`, `Address`, `NewAddress`, `LocalNetwork`, `GlobalBroadcastNetwork`, `ProtocolVersion`, `IpDefaultUdpPort` |
+| `common/types/` | Application-layer types: `DeviceInstance`, `ObjectType`, `ObjectIdentifier`, `PropertyIdentifier`, `RejectReason` + all constants |
 | `bip/` | BACnet/IP BVLC frame encode/decode, UDP transport, BBMD, foreign-device registration, `ClientRuntime` end-to-end wiring |
 | `apdu/` | Application layer: ICI-first ASE dispatch, clause 5.4 state machines, typed `Client` with confirmed/unconfirmed services, discovery |
 | `npdu/` | NPDU encode/decode per clause 6.2.2, all standard network-layer-message types |
@@ -30,12 +34,12 @@ layer, including a typed client API for common BACnet services.
 
 ```text
 .
-├── address.go
-├── constants.go
 ├── doc.go
-├── errors.go
-├── logging.go
-├── types.go
+├── common/
+│   ├── errors/  (active: ValidationError, NewValidationError, ErrInvalid* sentinels)
+│   ├── log/     (active: package-level Logger)
+│   ├── netprim/ (active: NetworkNumber, NetworkPriority, Address, network constants)
+│   └── types/   (active: DeviceInstance, ObjectType, ObjectIdentifier, PropertyIdentifier, RejectReason)
 ├── apdu/        (active: application layer, typed client, state machines)
 ├── bip/         (active: BVLC framing, UDP transport, BBMD, ClientRuntime)
 ├── encoding/    (active: BACnet tag/value encoding primitives)

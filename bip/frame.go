@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
 )
 
 // Frame is a decoded Annex J BVLC frame.
@@ -18,15 +18,15 @@ type Frame struct {
 // NewFrameWithType constructs a BVLC frame for the given BVLC type.
 func NewFrameWithType(frameType BVLCType, function BVLCFunctionType, payload []byte) (Frame, error) {
 	if !frameType.Valid() {
-		return Frame{}, bacnet.NewValidationError("type", frameType, ErrInvalidBVLCType)
+		return Frame{}, errors.NewValidationError("type", frameType, ErrInvalidBVLCType)
 	}
 
 	if !function.Valid() {
-		return Frame{}, bacnet.NewValidationError("function", function, ErrInvalidFunction)
+		return Frame{}, errors.NewValidationError("function", function, ErrInvalidFunction)
 	}
 
 	if len(payload)+BVLCHeaderLen > 0xFFFF {
-		return Frame{}, bacnet.NewValidationError("length", len(payload)+BVLCHeaderLen, ErrInvalidLength)
+		return Frame{}, errors.NewValidationError("length", len(payload)+BVLCHeaderLen, ErrInvalidLength)
 	}
 
 	return Frame{Type: frameType, Function: function, payload: slices.Clone(payload)}, nil
@@ -44,22 +44,22 @@ func NewFrameForAddress(addr netip.Addr, function BVLCFunctionType, payload []by
 // DecodeFrame parses a raw BVLC datagram.
 func DecodeFrame(raw []byte) (Frame, error) {
 	if len(raw) < BVLCHeaderLen {
-		return Frame{}, bacnet.NewValidationError("raw", len(raw), ErrFrameTooShort)
+		return Frame{}, errors.NewValidationError("raw", len(raw), ErrFrameTooShort)
 	}
 
 	frameType := BVLCType(raw[0])
 	if !frameType.Valid() {
-		return Frame{}, bacnet.NewValidationError("type", frameType, ErrInvalidBVLCType)
+		return Frame{}, errors.NewValidationError("type", frameType, ErrInvalidBVLCType)
 	}
 
 	function := BVLCFunctionType(raw[1])
 	if !function.Valid() {
-		return Frame{}, bacnet.NewValidationError("function", function, ErrInvalidFunction)
+		return Frame{}, errors.NewValidationError("function", function, ErrInvalidFunction)
 	}
 
 	declared := int(binary.BigEndian.Uint16(raw[2:4]))
 	if declared < BVLCHeaderLen || declared != len(raw) {
-		return Frame{}, bacnet.NewValidationError("length", declared, ErrInvalidLength)
+		return Frame{}, errors.NewValidationError("length", declared, ErrInvalidLength)
 	}
 
 	return Frame{
@@ -72,15 +72,15 @@ func DecodeFrame(raw []byte) (Frame, error) {
 // Encode serializes a BVLC frame into wire bytes.
 func (f Frame) Encode() ([]byte, error) {
 	if !f.Type.Valid() {
-		return nil, bacnet.NewValidationError("type", f.Type, ErrInvalidBVLCType)
+		return nil, errors.NewValidationError("type", f.Type, ErrInvalidBVLCType)
 	}
 	if !f.Function.Valid() {
-		return nil, bacnet.NewValidationError("function", f.Function, ErrInvalidFunction)
+		return nil, errors.NewValidationError("function", f.Function, ErrInvalidFunction)
 	}
 
 	totalLen := BVLCHeaderLen + len(f.payload)
 	if totalLen > 0xFFFF {
-		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+		return nil, errors.NewValidationError("length", totalLen, ErrInvalidLength)
 	}
 
 	out := make([]byte, totalLen)

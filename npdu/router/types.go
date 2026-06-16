@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -98,7 +98,7 @@ func (k ForwardKind) String() string {
 
 // RouteEntry is a routing-table snapshot entry.
 type RouteEntry struct {
-	Network   bacnet.NetworkNumber
+	Network   netprim.NetworkNumber
 	Port      PortID
 	PortInfo  []byte
 	Kind      RouteKind

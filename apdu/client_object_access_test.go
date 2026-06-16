@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -19,15 +20,15 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	arrayIndex := uint32(2)
 	req := ReadPropertyMultipleRequest{
 		Specs: []ReadAccessSpecification{{
 			ObjectIdentifier: objID,
 			Properties: []PropertyReference{
-				{PropertyIdentifier: bacnet.PropertyIdentifierPresentValue},
-				{PropertyIdentifier: bacnet.PropertyIdentifierStatusFlags, ArrayIndex: &arrayIndex},
+				{PropertyIdentifier: types.PropertyIdentifierPresentValue},
+				{PropertyIdentifier: types.PropertyIdentifierStatusFlags, ArrayIndex: &arrayIndex},
 			},
 		}},
 	}
@@ -66,7 +67,7 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 		Results: []ReadAccessResult{{
 			ObjectIdentifier: objID,
 			Results: []ReadPropertyResult{{
-				PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+				PropertyIdentifier: types.PropertyIdentifierPresentValue,
 				PropertyValue:      []byte{0x44, 0x41, 0x20, 0x00, 0x00},
 			}},
 		}},
@@ -80,7 +81,7 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	ackNPDU, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ackNPDU, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err := ase.OnInboundNPDU(context.Background(), dst, *ackNPDU); err != nil {
 		t.Fatalf("OnInboundNPDU: %v", err)
 	}
@@ -101,16 +102,16 @@ func TestClientWritePropertyAndWritePropertyMultipleSimpleACK(t *testing.T) {
 	tests := []struct {
 		name    string
 		service ServiceChoice
-		invoke  func(*clientImpl, context.Context, bacnet.Address) error
+		invoke  func(*clientImpl, context.Context, netprim.Address) error
 	}{
 		{
 			name:    "write-property",
 			service: ServiceChoiceWriteProperty,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
-				objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogValue, 1)
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
+				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogValue, 1)
 				req := WritePropertyRequest{
 					ObjectIdentifier:   objID,
-					PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+					PropertyIdentifier: types.PropertyIdentifierPresentValue,
 					PropertyValue:      []byte{0x44, 0x48, 0x00, 0x00},
 				}
 				return c.WriteProperty(ctx, dst, req)
@@ -119,12 +120,12 @@ func TestClientWritePropertyAndWritePropertyMultipleSimpleACK(t *testing.T) {
 		{
 			name:    "write-property-multiple",
 			service: ServiceChoiceWritePropertyMultiple,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
-				objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogValue, 1)
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
+				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogValue, 1)
 				req := WritePropertyMultipleRequest{Writes: []WriteAccessSpecification{{
 					ObjectIdentifier: objID,
 					Values: []PropertyValueWrite{{
-						PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+						PropertyIdentifier: types.PropertyIdentifierPresentValue,
 						PropertyValue:      []byte{0x44, 0x48, 0x00, 0x00},
 					}},
 				}}}
@@ -142,7 +143,7 @@ func TestClientWritePropertyAndWritePropertyMultipleSimpleACK(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			client := clientRaw.(*clientImpl)
-			dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+			dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 			ch := make(chan error, 1)
 			go func() { ch <- tt.invoke(client, context.Background(), dst) }()
@@ -160,7 +161,7 @@ func TestClientWritePropertyAndWritePropertyMultipleSimpleACK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			ackNPDU, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+			ackNPDU, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 			if err := ase.OnInboundNPDU(context.Background(), dst, *ackNPDU); err != nil {
 				t.Fatalf("OnInboundNPDU: %v", err)
 			}
@@ -193,12 +194,12 @@ func TestPhase2RemoteErrorMapping(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			client := clientRaw.(*clientImpl)
-			dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+			dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
-			objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogValue, 1)
+			objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogValue, 1)
 			req := WritePropertyRequest{
 				ObjectIdentifier:   objID,
-				PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+				PropertyIdentifier: types.PropertyIdentifierPresentValue,
 				PropertyValue:      []byte{0x44, 0x00, 0x00, 0x00},
 			}
 
@@ -219,7 +220,7 @@ func TestPhase2RemoteErrorMapping(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			inbound, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, inboundBytes)
+			inbound, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, inboundBytes)
 			if err := ase.OnInboundNPDU(context.Background(), dst, *inbound); err != nil {
 				t.Fatalf("OnInboundNPDU: %v", err)
 			}
@@ -267,7 +268,7 @@ func decodeReadPropertyMultipleRequestPayloadForTest(payload []byte) (ReadProper
 		if len(objBytes) != 4 {
 			return ReadPropertyMultipleRequest{}, errors.New("invalid object identifier length")
 		}
-		objID := bacnet.ObjectIdentifier(uint32(objBytes[0])<<24 | uint32(objBytes[1])<<16 | uint32(objBytes[2])<<8 | uint32(objBytes[3]))
+		objID := types.ObjectIdentifier(uint32(objBytes[0])<<24 | uint32(objBytes[1])<<16 | uint32(objBytes[2])<<8 | uint32(objBytes[3]))
 		cursor = next
 
 		next, err = expectOpeningTag(payload, cursor, 1)
@@ -292,7 +293,7 @@ func decodeReadPropertyMultipleRequestPayloadForTest(payload []byte) (ReadProper
 			}
 			cursor = next
 
-			pref := PropertyReference{PropertyIdentifier: bacnet.PropertyIdentifier(propID)}
+			pref := PropertyReference{PropertyIdentifier: types.PropertyIdentifier(propID)}
 			if cursor < len(payload) && looksLikeContextPrimitiveTag(payload[cursor], 1) {
 				_, idxBytes, next, err := decodeExpectedContextPrimitive(payload, cursor, 1)
 				if err != nil {
@@ -356,12 +357,12 @@ func TestClientReadRange(t *testing.T) {
 	}
 	client := clientRaw.(*clientImpl)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	arrayIndex := uint32(2)
 	req := ReadRangeRequest{
 		ObjectIdentifier:   objID,
-		PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+		PropertyIdentifier: types.PropertyIdentifierPresentValue,
 		ArrayIndex:         &arrayIndex,
 		BySequenceNumber:   &ReadRangeBySequenceNumber{SequenceNumber: 10, Count: 5},
 	}
@@ -412,7 +413,7 @@ func TestClientReadRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	ackNPDU, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ackNPDU, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err := ase.OnInboundNPDU(context.Background(), dst, *ackNPDU); err != nil {
 		t.Fatalf("OnInboundNPDU: %v", err)
 	}
@@ -450,7 +451,7 @@ func decodeReadRangeRequestPayloadForTest(payload []byte) (ReadRangeRequest, err
 	}
 	cursor = next
 
-	res := ReadRangeRequest{ObjectIdentifier: objID, PropertyIdentifier: bacnet.PropertyIdentifier(propID)}
+	res := ReadRangeRequest{ObjectIdentifier: objID, PropertyIdentifier: types.PropertyIdentifier(propID)}
 	if cursor < len(payload) && looksLikeContextPrimitiveTag(payload[cursor], 2) {
 		_, arrBytes, next, err := decodeExpectedContextPrimitive(payload, cursor, 2)
 		if err != nil {

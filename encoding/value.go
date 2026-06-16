@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/types"
 )
 
 // EncodeUnsigned encodes a BACnet unsigned integer in the shortest form.
@@ -89,17 +89,17 @@ func DecodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag 
 }
 
 // EncodeObjectIdentifierValue encodes an ObjectIdentifier into a 4-byte value.
-func EncodeObjectIdentifierValue(objectIdentifier bacnet.ObjectIdentifier) []byte {
+func EncodeObjectIdentifierValue(objectIdentifier types.ObjectIdentifier) []byte {
 	raw := uint32(objectIdentifier)
 	return []byte{byte(raw >> 24), byte(raw >> 16), byte(raw >> 8), byte(raw)}
 }
 
 // DecodeObjectIdentifierValue decodes a 4-byte object identifier value.
-func DecodeObjectIdentifierValue(raw []byte) (bacnet.ObjectIdentifier, error) {
+func DecodeObjectIdentifierValue(raw []byte) (types.ObjectIdentifier, error) {
 	if len(raw) != 4 {
 		return 0, fmt.Errorf("%w: invalid object-identifier length %d", ErrDecodeFailure, len(raw))
 	}
-	obj := bacnet.ObjectIdentifier(uint32(raw[0])<<24 | uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3]))
+	obj := types.ObjectIdentifier(uint32(raw[0])<<24 | uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3]))
 	return obj, nil
 }
 

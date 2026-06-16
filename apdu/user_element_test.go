@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -37,7 +37,7 @@ func TestUserElementInvokeConfirmedComplexACK(t *testing.T) {
 	ase, _ := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4}, transport)
 	ue, _ := NewUserElement(ase)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	type result struct {
 		confirm ConfirmICI
@@ -47,7 +47,7 @@ func TestUserElementInvokeConfirmedComplexACK(t *testing.T) {
 	go func() {
 		confirm, err := ue.InvokeConfirmed(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -62,7 +62,7 @@ func TestUserElementInvokeConfirmedComplexACK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	ack, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ack, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err := ase.OnInboundNPDU(context.Background(), dst, *ack); err != nil {
 		t.Fatalf("OnInboundNPDU: %v", err)
 	}
@@ -83,10 +83,10 @@ func TestUserElementInvokeConfirmedTimeout(t *testing.T) {
 	ase, _ := NewASE(ASEConfig{InvokeTimeout: 30 * time.Millisecond, MaxConcurrentInvokes: 4}, newTestNPDUTransport())
 	ue, _ := NewUserElement(ase)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 	_, err := ue.InvokeConfirmed(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 		},
@@ -103,10 +103,10 @@ func TestUserElementSendUnconfirmed(t *testing.T) {
 	ase, _ := NewASE(ASEConfig{InvokeTimeout: time.Second, MaxConcurrentInvokes: 4}, transport)
 	ue, _ := NewUserElement(ase)
 
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 	if err := ue.SendUnconfirmed(context.Background(), UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x01, 0x02},
@@ -142,7 +142,7 @@ func TestUserElementHandleConfirmedDispatch(t *testing.T) {
 		t.Fatalf("HandleConfirmed: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
 	inboundBytes, err := encodeAPDU(outboundAPDU{
 		Type:                      PDUTypeConfirmedRequest,
 		InvokeID:                  7,
@@ -155,7 +155,7 @@ func TestUserElementHandleConfirmedDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	inbound, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, inboundBytes)
+	inbound, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, inboundBytes)
 	if err := ase.OnInboundNPDU(context.Background(), src, *inbound); err != nil {
 		t.Fatalf("OnInboundNPDU: %v", err)
 	}

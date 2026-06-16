@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -14,13 +15,13 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 	tests := []struct {
 		name          string
 		serviceChoice ServiceChoice
-		invoke        func(*clientImpl, context.Context, bacnet.Address) error
+		invoke        func(*clientImpl, context.Context, netprim.Address) error
 	}{
 		{
 			name:          "subscribe-cov",
 			serviceChoice: subscribeCOVServiceChoice,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
-				objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
+				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 				issueConfirmed := true
 				lifetime := COVLifetime(120)
 				req := SubscribeCOVRequest{
@@ -35,8 +36,8 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 		{
 			name:          "subscribe-cov-property",
 			serviceChoice: ServiceChoiceSubscribeCOVProperty,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
-				objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
+				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 				issueConfirmed := false
 				lifetime := COVLifetime(30)
 				increment := COVIncrement(0.5)
@@ -46,7 +47,7 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 					IssueConfirmedNotifications: &issueConfirmed,
 					Lifetime:                    &lifetime,
 					MonitoredProperty: MonitoredPropertyReference{
-						PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+						PropertyIdentifier: types.PropertyIdentifierPresentValue,
 					},
 					COVIncrement: &increment,
 				}
@@ -64,7 +65,7 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			client := clientRaw.(*clientImpl)
-			dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+			dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 			ch := make(chan error, 1)
 			go func() { ch <- tt.invoke(client, context.Background(), dst) }()
@@ -85,7 +86,7 @@ func TestSubscribeCOVAndSubscribeCOVPropertySimpleACK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			ackNPDU, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+			ackNPDU, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 			if err := ase.OnInboundNPDU(context.Background(), dst, *ackNPDU); err != nil {
 				t.Fatalf("OnInboundNPDU: %v", err)
 			}
@@ -117,8 +118,8 @@ func TestSubscribeCOVPhaseRemoteErrorMapping(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			client := clientRaw.(*clientImpl)
-			dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
-			objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+			dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
+			objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 			req := SubscribeCOVRequest{SubscriberProcessIdentifier: 1, MonitoredObjectIdentifier: objID}
 
 			ch := make(chan error, 1)
@@ -138,7 +139,7 @@ func TestSubscribeCOVPhaseRemoteErrorMapping(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			inbound, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, inboundBytes)
+			inbound, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, inboundBytes)
 			if err := ase.OnInboundNPDU(context.Background(), dst, *inbound); err != nil {
 				t.Fatalf("OnInboundNPDU: %v", err)
 			}
@@ -169,11 +170,11 @@ func TestHandleUnconfirmedCOVNotification(t *testing.T) {
 		t.Fatalf("HandleUnconfirmedCOVNotification: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
-	devID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1234)
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
+	devID, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1234)
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	payload := encodeUnconfirmedCOVNotificationPayloadForTest(1, devID, objID, 60, []COVPropertyValue{{
-		PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+		PropertyIdentifier: types.PropertyIdentifierPresentValue,
 		Value:              []byte{0x44, 0x41, 0x20, 0x00, 0x00},
 	}})
 
@@ -181,7 +182,7 @@ func TestHandleUnconfirmedCOVNotification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -226,13 +227,13 @@ func TestHandleUnconfirmedCOVNotificationMultiple(t *testing.T) {
 		t.Fatalf("HandleUnconfirmedCOVNotificationMultiple: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
-	devID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1234)
-	objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
+	devID, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1234)
+	objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 	payload := encodeUnconfirmedCOVNotificationMultiplePayloadForTest(1, devID, 90, []COVNotificationMultipleObject{{
 		ObjectIdentifier: objID,
 		Values: []COVPropertyValue{{
-			PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+			PropertyIdentifier: types.PropertyIdentifierPresentValue,
 			Value:              []byte{0x44, 0x41, 0x20, 0x00, 0x00},
 		}},
 	}})
@@ -248,7 +249,7 @@ func TestHandleUnconfirmedCOVNotificationMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -295,7 +296,7 @@ func TestHandleUnconfirmedCOVNilHandlersAndMalformedPayloads(t *testing.T) {
 		t.Fatalf("HandleUnconfirmedCOVNotificationMultiple: %v", err)
 	}
 
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
 	badPayloads := []struct {
 		name    string
 		service ServiceChoice
@@ -310,7 +311,7 @@ func TestHandleUnconfirmedCOVNilHandlersAndMalformedPayloads(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+			npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 			if err != nil {
 				t.Fatalf("NewLocalAPDU: %v", err)
 			}
@@ -324,8 +325,8 @@ func TestHandleUnconfirmedCOVNilHandlersAndMalformedPayloads(t *testing.T) {
 
 func encodeUnconfirmedCOVNotificationPayloadForTest(
 	processID SubscriberProcessIdentifier,
-	initiatingDeviceIdentifier bacnet.ObjectIdentifier,
-	monitoredObjectIdentifier bacnet.ObjectIdentifier,
+	initiatingDeviceIdentifier types.ObjectIdentifier,
+	monitoredObjectIdentifier types.ObjectIdentifier,
 	timeRemaining COVLifetime,
 	values []COVPropertyValue,
 ) []byte {
@@ -355,7 +356,7 @@ func encodeUnconfirmedCOVNotificationPayloadForTest(
 
 func encodeUnconfirmedCOVNotificationMultiplePayloadForTest(
 	processID SubscriberProcessIdentifier,
-	initiatingDeviceIdentifier bacnet.ObjectIdentifier,
+	initiatingDeviceIdentifier types.ObjectIdentifier,
 	timeRemaining COVLifetime,
 	objects []COVNotificationMultipleObject,
 ) []byte {

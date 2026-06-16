@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 type nlmConformanceVector struct {
@@ -62,17 +62,17 @@ func buildMessageForConformanceVector(name string) (NetworkLayerMessageModel, er
 	case "valid_00_who_is_router_any":
 		return NewWhoIsRouterToNetworkMessage(nil)
 	case "valid_00_who_is_router_dnet_100":
-		return NewWhoIsRouterToNetworkMessage(new(bacnet.NetworkNumber(100)))
+		return NewWhoIsRouterToNetworkMessage(new(netprim.NetworkNumber(100)))
 	case "valid_01_i_am_router":
-		return NewIAmRouterToNetworkMessage([]bacnet.NetworkNumber{100, 200})
+		return NewIAmRouterToNetworkMessage([]netprim.NetworkNumber{100, 200})
 	case "valid_02_i_could_be_router":
 		return NewICouldBeRouterToNetworkMessage(100, 5)
 	case "valid_03_reject_message":
 		return NewRejectMessageToNetworkMessage(100, NLMRejectReasonTooManyHops)
 	case "valid_04_router_busy":
-		return NewRouterBusyToNetworkMessage([]bacnet.NetworkNumber{100})
+		return NewRouterBusyToNetworkMessage([]netprim.NetworkNumber{100})
 	case "valid_05_router_available":
-		return NewRouterAvailableToNetworkMessage([]bacnet.NetworkNumber{100, 200})
+		return NewRouterAvailableToNetworkMessage([]netprim.NetworkNumber{100, 200})
 	case "valid_06_initialize_routing_table":
 		entry, err := NewRoutingTablePortEntry(100, 0x11, []byte{0xAA, 0xBB})
 		if err != nil {
@@ -153,7 +153,7 @@ func TestNLMConformanceVectorsNPDUPayload(t *testing.T) {
 				t.Fatalf("buildMessageForConformanceVector(): %v", err)
 			}
 
-			n, err := NewNetworkLayerNPDUFromMessage(NPCI{Priority: bacnet.NetworkPriorityNormal}, model)
+			n, err := NewNetworkLayerNPDUFromMessage(NPCI{Priority: netprim.NetworkPriorityNormal}, model)
 			if err != nil {
 				t.Fatalf("NewNetworkLayerNPDUFromMessage(): %v", err)
 			}

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
 	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -80,7 +80,7 @@ func mustStack(t *testing.T, conn DatagramConn) *Stack {
 // minLocalNPDU builds the shortest valid local APDU NPDU (2 header bytes + payload).
 func minLocalNPDU(t *testing.T, apduBytes []byte) []byte {
 	t.Helper()
-	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	pkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -142,7 +142,7 @@ type testASE struct {
 }
 
 type inboundCall struct {
-	src bacnet.Address
+	src netprim.Address
 	pkt npdu.NetworkLayerProtocolDataUnit
 }
 
@@ -158,7 +158,7 @@ func (a *testASE) BeginConfirmedServiceRequest(_ context.Context, _ apdu.Confirm
 func (a *testASE) SendUnconfirmed(_ context.Context, _ apdu.UnconfirmedRequestICI) error {
 	return nil
 }
-func (a *testASE) OnInboundNPDU(_ context.Context, src bacnet.Address, pkt npdu.NetworkLayerProtocolDataUnit) error {
+func (a *testASE) OnInboundNPDU(_ context.Context, src netprim.Address, pkt npdu.NetworkLayerProtocolDataUnit) error {
 	a.calls = append(a.calls, inboundCall{src: src, pkt: pkt})
 	return nil
 }
@@ -196,7 +196,7 @@ func TestStackSendNPDUEncoding(t *testing.T) {
 	s := mustStack(t, conn)
 
 	apduBytes := []byte{0x10, 0x08} // unconfirmed-request, WhoIs
-	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	pkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -244,10 +244,10 @@ func TestStackSendNPDUUnsupportedAddress(t *testing.T) {
 	conn := &pipeConn{}
 	s := mustStack(t, conn)
 
-	pkt, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x01})
+	pkt, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x01})
 
 	// Non-local network address cannot be converted to AddrPort.
-	dst := bacnet.Address{Network: 100, MAC: []byte{1, 2, 3, 4, 0xBA, 0xC0}}
+	dst := netprim.Address{Network: 100, MAC: []byte{1, 2, 3, 4, 0xBA, 0xC0}}
 	err := s.SendNPDU(context.Background(), dst, *pkt)
 	if !errors.Is(err, ErrUnsupportedAddress) {
 		t.Fatalf("err = %v, want %v", err, ErrUnsupportedAddress)
@@ -258,7 +258,7 @@ func TestStackSendNPDUWriteError(t *testing.T) {
 	conn := &pipeConn{writeErr: ErrWriteFailure}
 	s := mustStack(t, conn)
 
-	pkt, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x01})
+	pkt, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x01})
 	dst, _ := AddrPortToAddress(netip.MustParseAddrPort("1.2.3.4:47808"))
 
 	err := s.SendNPDU(context.Background(), dst, *pkt)

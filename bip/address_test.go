@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // TestAddrPortToAddress verifies round-trip and error cases.
@@ -50,8 +50,8 @@ func TestAddrPortToAddress(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got.Network != bacnet.LocalNetwork {
-				t.Errorf("Network = %d, want %d", got.Network, bacnet.LocalNetwork)
+			if got.Network != netprim.LocalNetwork {
+				t.Errorf("Network = %d, want %d", got.Network, netprim.LocalNetwork)
 			}
 			if len(got.MAC) != len(tt.wantMAC) {
 				t.Fatalf("MAC len = %d, want %d", len(got.MAC), len(tt.wantMAC))
@@ -69,28 +69,28 @@ func TestAddrPortToAddress(t *testing.T) {
 func TestAddressToAddrPort(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    bacnet.Address
+		input    netprim.Address
 		wantAddr netip.AddrPort
 		wantErr  error
 	}{
 		{
 			name:     "valid 6-byte local",
-			input:    bacnet.Address{Network: bacnet.LocalNetwork, MAC: []byte{192, 168, 1, 10, 0xBA, 0xC0}},
+			input:    netprim.Address{Network: netprim.LocalNetwork, MAC: []byte{192, 168, 1, 10, 0xBA, 0xC0}},
 			wantAddr: netip.MustParseAddrPort("192.168.1.10:47808"),
 		},
 		{
 			name:    "non-local network rejected",
-			input:   bacnet.Address{Network: 100, MAC: []byte{192, 168, 1, 10, 0xBA, 0xC0}},
+			input:   netprim.Address{Network: 100, MAC: []byte{192, 168, 1, 10, 0xBA, 0xC0}},
 			wantErr: ErrUnsupportedAddress,
 		},
 		{
 			name:    "4-byte MAC rejected",
-			input:   bacnet.Address{Network: bacnet.LocalNetwork, MAC: []byte{192, 168, 1, 10}},
+			input:   netprim.Address{Network: netprim.LocalNetwork, MAC: []byte{192, 168, 1, 10}},
 			wantErr: ErrUnsupportedAddress,
 		},
 		{
 			name:    "nil MAC rejected",
-			input:   bacnet.Address{Network: bacnet.LocalNetwork, MAC: nil},
+			input:   netprim.Address{Network: netprim.LocalNetwork, MAC: nil},
 			wantErr: ErrUnsupportedAddress,
 		},
 	}
@@ -148,7 +148,7 @@ func TestAddrPortToAddressCopiesMAC(t *testing.T) {
 	orig := make([]byte, len(addr.MAC))
 	copy(orig, addr.MAC)
 	addr.MAC[0] = 0xFF
-	got, err := AddressToAddrPort(bacnet.Address{Network: bacnet.LocalNetwork, MAC: orig})
+	got, err := AddressToAddrPort(netprim.Address{Network: netprim.LocalNetwork, MAC: orig})
 	if err != nil {
 		t.Fatalf("AddressToAddrPort: %v", err)
 	}

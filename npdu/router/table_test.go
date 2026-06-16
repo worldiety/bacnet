@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 type fakeClock struct {
@@ -111,8 +111,8 @@ func TestAddRouteValidation(t *testing.T) {
 		err     error
 		wantErr error
 	}{
-		{name: "connected local network", err: r.AddConnectedRoute(1, bacnet.LocalNetwork, nil), wantErr: ErrRouteToLocalNetwork},
-		{name: "connected global broadcast", err: r.AddConnectedRoute(1, bacnet.GlobalBroadcastNetwork, nil), wantErr: ErrInvalidRoute},
+		{name: "connected local network", err: r.AddConnectedRoute(1, netprim.LocalNetwork, nil), wantErr: ErrRouteToLocalNetwork},
+		{name: "connected global broadcast", err: r.AddConnectedRoute(1, netprim.GlobalBroadcastNetwork, nil), wantErr: ErrInvalidRoute},
 		{name: "learned invalid ttl", err: r.AddLearnedRoute(1, 100, 0), wantErr: ErrInvalidRoute},
 	}
 

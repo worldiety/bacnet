@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -18,7 +19,7 @@ func TestDiscoverTimeoutWindow(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	client := clientRaw.(*clientImpl)
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	type result struct {
 		items []IAmIndication
@@ -56,7 +57,7 @@ func TestDiscoverDeduplicatesByDeviceAndSource(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	client := clientRaw.(*clientImpl)
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	type result struct {
 		items []IAmIndication
@@ -70,10 +71,10 @@ func TestDiscoverDeduplicatesByDeviceAndSource(t *testing.T) {
 
 	<-transport.ch // Who-Is outbound
 
-	srcA, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x0A})
-	srcB, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x0B})
-	dev1, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1001)
-	dev2, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1002)
+	srcA, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0A})
+	srcB, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0B})
+	dev1, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1001)
+	dev2, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1002)
 
 	sendIAmInboundForDiscoveryTest(t, ase, srcA, dev1)
 	sendIAmInboundForDiscoveryTest(t, ase, srcA, dev1) // duplicate
@@ -96,7 +97,7 @@ func TestDiscoverCancellation(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	client := clientRaw.(*clientImpl)
-	dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -120,7 +121,7 @@ func TestDiscoverCancellation(t *testing.T) {
 	}
 }
 
-func sendIAmInboundForDiscoveryTest(t *testing.T, ase ASE, src bacnet.Address, deviceID bacnet.ObjectIdentifier) {
+func sendIAmInboundForDiscoveryTest(t *testing.T, ase ASE, src netprim.Address, deviceID types.ObjectIdentifier) {
 	t.Helper()
 	payload := encodeIAmPayloadForTest(deviceID, 1476, SegmentationSupportNo, 117)
 	apduBytes, err := encodeAPDU(outboundAPDU{
@@ -131,7 +132,7 @@ func sendIAmInboundForDiscoveryTest(t *testing.T, ase ASE, src bacnet.Address, d
 	if err != nil {
 		t.Fatalf("encodeAPDU: %v", err)
 	}
-	npkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	npkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, apduBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}

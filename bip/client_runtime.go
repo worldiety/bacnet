@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/netip"
 
-	"go.wdy.de/bacnet"
 	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/common/log"
 )
 
 // ClientRuntimeConfig configures the high-level BACnet/IP client runtime.
@@ -39,13 +39,13 @@ type ClientRuntime struct {
 func NewClientRuntime(localAddr netip.Addr, cfg ClientRuntimeConfig) (*ClientRuntime, error) {
 	conn, err := NewDatagramConn(localAddr)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime create datagram conn", "error", err, "addr", localAddr)
+		log.Logger.Error("bip client runtime create datagram conn", "error", err, "addr", localAddr)
 		return nil, err
 	}
 
 	runtime, err := NewClientRuntimeWithConn(conn, cfg)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime build with conn", "error", err)
+		log.Logger.Error("bip client runtime build with conn", "error", err)
 		_ = conn.Close()
 		return nil, err
 	}
@@ -68,25 +68,25 @@ func NewClientRuntimeWithConn(conn DatagramConn, cfg ClientRuntimeConfig) (*Clie
 
 	transport, err := NewTransport(conn, cfg.MaxDatagramSize)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime create transport", "error", err)
+		log.Logger.Error("bip client runtime create transport", "error", err)
 		return nil, err
 	}
 
 	stack, err := NewStack(transport)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime create stack", "error", err)
+		log.Logger.Error("bip client runtime create stack", "error", err)
 		return nil, err
 	}
 
 	ase, err := apdu.NewASE(cfg.ASE, stack)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime create ase", "error", err)
+		log.Logger.Error("bip client runtime create ase", "error", err)
 		return nil, err
 	}
 
 	client, err := apdu.NewClient(ase, cfg.Client)
 	if err != nil {
-		bacnet.Logger.Error("bip client runtime create client", "error", err)
+		log.Logger.Error("bip client runtime create client", "error", err)
 		_ = ase.Close()
 		return nil, err
 	}

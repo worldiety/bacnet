@@ -5,7 +5,9 @@ import (
 	"net/netip"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 const defaultForeignDeviceRegistrationResponseTimeout = 5 * time.Second
@@ -46,7 +48,7 @@ func NewDeviceIp4(conn DatagramConn, ttl TTL) (DeviceIp4, error) {
 		return nil, ErrNilDatagramConn
 	}
 	if ttl == 0 {
-		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
+		return nil, errors.NewValidationError("ttl", ttl, ErrInvalidTTL)
 	}
 	return &deviceImpl{conn: conn, ttl: ttl}, nil
 }
@@ -61,13 +63,13 @@ type deviceImpl struct {
 func (d *deviceImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
 	raw, err := msg.Encode()
 	if err != nil {
-		bacnet.Logger.Error("bip device encode local broadcast", "error", err)
+		log.Logger.Error("bip device encode local broadcast", "error", err)
 		return fmt.Errorf("encode original-broadcast-npdu: %w", err)
 	}
 
-	dst := netip.AddrPortFrom(netip.MustParseAddr("255.255.255.255"), bacnet.IpDefaultUdpPort)
+	dst := netip.AddrPortFrom(netip.MustParseAddr("255.255.255.255"), netprim.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
-		bacnet.Logger.Error("bip device write local broadcast", "error", err, "dst", dst, "bytes", len(raw))
+		log.Logger.Error("bip device write local broadcast", "error", err, "dst", dst, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
@@ -77,17 +79,17 @@ func (d *deviceImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
 // dst must be a valid IPv4 address-port pair; it is used directly as the UDP destination.
 func (d *deviceImpl) SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) error {
 	if !dst.IsValid() || !dst.Addr().Is4() {
-		return bacnet.NewValidationError("dst", dst, ErrInvalidIPAddress)
+		return errors.NewValidationError("dst", dst, ErrInvalidIPAddress)
 	}
 
 	raw, err := msg.Encode()
 	if err != nil {
-		bacnet.Logger.Error("bip device encode unicast", "error", err, "dst", dst)
+		log.Logger.Error("bip device encode unicast", "error", err, "dst", dst)
 		return fmt.Errorf("encode original-unicast-npdu: %w", err)
 	}
 
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
-		bacnet.Logger.Error("bip device write unicast", "error", err, "dst", dst, "bytes", len(raw))
+		log.Logger.Error("bip device write unicast", "error", err, "dst", dst, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
@@ -96,31 +98,31 @@ func (d *deviceImpl) SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) er
 // RegisterAsForeignDevice implements DeviceIp4.
 func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 	if !bbmdAddr.IsValid() || !bbmdAddr.Is4() {
-		return bacnet.NewValidationError("bbmd address", bbmdAddr, ErrInvalidIPAddress)
+		return errors.NewValidationError("bbmd address", bbmdAddr, ErrInvalidIPAddress)
 	}
 
 	req, err := NewRegisterForeignDevice(d.ttl)
 	if err != nil {
-		bacnet.Logger.Error("bip device build register foreign device", "error", err, "ttl", d.ttl)
+		log.Logger.Error("bip device build register foreign device", "error", err, "ttl", d.ttl)
 		return fmt.Errorf("build register-foreign-device: %w", err)
 	}
 
 	raw, err := req.Encode()
 	if err != nil {
-		bacnet.Logger.Error("bip device encode register foreign device", "error", err)
+		log.Logger.Error("bip device encode register foreign device", "error", err)
 		return fmt.Errorf("encode register-foreign-device: %w", err)
 	}
 
-	dst := netip.AddrPortFrom(bbmdAddr, bacnet.IpDefaultUdpPort)
+	dst := netip.AddrPortFrom(bbmdAddr, netprim.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
-		bacnet.Logger.Error("bip device write register foreign device", "error", err, "dst", dst, "bytes", len(raw))
+		log.Logger.Error("bip device write register foreign device", "error", err, "dst", dst, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 
 	readDeadline, supportsReadDeadline := d.conn.(readDeadlineSetter)
 	if supportsReadDeadline {
 		if err := readDeadline.SetReadDeadline(time.Now().Add(defaultForeignDeviceRegistrationResponseTimeout)); err != nil {
-			bacnet.Logger.Error("bip device set read deadline", "error", err, "timeout", defaultForeignDeviceRegistrationResponseTimeout)
+			log.Logger.Error("bip device set read deadline", "error", err, "timeout", defaultForeignDeviceRegistrationResponseTimeout)
 			return fmt.Errorf("%w: %v", ErrReadFailure, err)
 		}
 		defer func() {
@@ -133,13 +135,13 @@ func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 	for {
 		n, src, err := d.conn.ReadFromUDPAddrPort(buf)
 		if err != nil {
-			bacnet.Logger.Error("bip device read register response", "error", err)
+			log.Logger.Error("bip device read register response", "error", err)
 			return fmt.Errorf("%w: %v", ErrReadFailure, err)
 		}
 
 		if src != dst {
 			if !supportsReadDeadline {
-				bacnet.Logger.Error("bip device unexpected register response source", "error", ErrReadFailure, "src", src, "expected", dst)
+				log.Logger.Error("bip device unexpected register response source", "error", ErrReadFailure, "src", src, "expected", dst)
 				return fmt.Errorf("%w: unexpected response source %v", ErrReadFailure, src)
 			}
 			continue
@@ -148,14 +150,14 @@ func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 		var result BVLCResult
 		if err := result.Decode(buf[:n]); err != nil {
 			if !supportsReadDeadline {
-				bacnet.Logger.Error("bip device decode register response", "error", err, "bytes", n)
+				log.Logger.Error("bip device decode register response", "error", err, "bytes", n)
 				return fmt.Errorf("%w: decode bvlc-result from bbmd: %v", ErrReadFailure, err)
 			}
 			continue
 		}
 
 		if result.ResultCode() != ResultCodeSuccessfulCompletion {
-			bacnet.Logger.Error("bip device registration rejected", "error", ErrRegistrationRejected, "result_code", result.ResultCode())
+			log.Logger.Error("bip device registration rejected", "error", ErrRegistrationRejected, "result_code", result.ResultCode())
 			return fmt.Errorf("%w: %v", ErrRegistrationRejected, result.ResultCode())
 		}
 

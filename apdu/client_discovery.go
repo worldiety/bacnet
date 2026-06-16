@@ -6,12 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // DiscoverRequest configures a Who-Is discovery window.
 type DiscoverRequest struct {
-	Destination bacnet.Address
+	Destination netprim.Address
 	WhoIs       WhoIsRequest
 	Window      time.Duration
 }
@@ -20,10 +22,10 @@ type DiscoverRequest struct {
 // or ctx is cancelled. Results are deduplicated by (device identifier, source).
 func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIndication, error) {
 	if req.Window <= 0 {
-		return nil, bacnet.NewValidationError("window", req.Window, ErrInvalidASEConfig)
+		return nil, errors.NewValidationError("window", req.Window, ErrInvalidASEConfig)
 	}
 	if c.iam == nil {
-		return nil, bacnet.NewValidationError("i-am dispatcher", nil, ErrInvalidASEConfig)
+		return nil, errors.NewValidationError("i-am dispatcher", nil, ErrInvalidASEConfig)
 	}
 
 	subID, ch, err := c.iam.Subscribe()
@@ -54,7 +56,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 			}
 			key := discoverDedupKey(indication)
 			if _, exists := seen[key]; exists {
-				bacnet.Logger.Debug(
+				log.Logger.Debug(
 					"apdu discover duplicate i-am dropped",
 					"device_identifier", indication.DeviceIdentifier,
 					"src_network", indication.Source.Network,
@@ -64,7 +66,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 				continue
 			}
 			seen[key] = struct{}{}
-			bacnet.Logger.Debug(
+			log.Logger.Debug(
 				"apdu discover i-am accepted",
 				"device_identifier", indication.DeviceIdentifier,
 				"src_network", indication.Source.Network,
@@ -99,7 +101,7 @@ func newIAmDispatcher(ue UserElement) *iAmDispatcher {
 
 func (d *iAmDispatcher) RegisterHandler(handler IAmHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	d.mu.Lock()
@@ -159,7 +161,7 @@ func (d *iAmDispatcher) ensureRegisteredLocked() error {
 }
 
 func (d *iAmDispatcher) onInbound(ctx context.Context, indication UnconfirmedIndicationICI) error {
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"apdu i-am dispatcher inbound",
 		"src_network", indication.Source.Network,
 		"src_mac_length", len(indication.Source.MACBytes()),
@@ -170,7 +172,7 @@ func (d *iAmDispatcher) onInbound(ctx context.Context, indication UnconfirmedInd
 	if err != nil {
 		return err
 	}
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"apdu i-am dispatcher decode success",
 		"device_identifier", decoded.DeviceIdentifier,
 		"vendor_id", decoded.VendorID,
@@ -204,7 +206,7 @@ func (d *iAmDispatcher) onInbound(ctx context.Context, indication UnconfirmedInd
 		select {
 		case ch <- typed:
 		default:
-			bacnet.Logger.Debug(
+			log.Logger.Debug(
 				"apdu i-am dispatcher subscriber drop",
 				"device_identifier", typed.DeviceIdentifier,
 				"src_network", typed.Source.Network,

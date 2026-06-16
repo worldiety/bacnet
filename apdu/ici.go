@@ -3,7 +3,7 @@ package apdu
 import (
 	"fmt"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // MaxSegmentsAccepted is the 3-bit field that encodes the maximum number of APDU
@@ -141,7 +141,7 @@ func (r ConfirmedResponseType) String() string {
 // before encoding and transmitting the PDU.
 type ConfirmedRequestICI struct {
 	// Destination is the BACnet address of the intended recipient device.
-	Destination bacnet.Address
+	Destination netprim.Address
 
 	// MaxAPDULengthAccepted is the maximum APDU byte size this device can accept
 	// in a response (encoded in the Confirmed-Request PDU header per clause 20.1.2).
@@ -155,7 +155,7 @@ type ConfirmedRequestICI struct {
 	MaxSegmentsAccepted MaxSegmentsAccepted
 
 	// Priority is the network message priority applied when transmitting this request.
-	Priority bacnet.NetworkPriority
+	Priority netprim.NetworkPriority
 
 	// ServiceRequest carries the confirmed service choice and its encoded parameters.
 	ServiceRequest ConfirmedRequest
@@ -170,10 +170,10 @@ type ConfirmedRequestICI struct {
 // because no response is expected.
 type UnconfirmedRequestICI struct {
 	// Destination is the BACnet address of the intended recipient (or broadcast).
-	Destination bacnet.Address
+	Destination netprim.Address
 
 	// Priority is the network message priority applied when transmitting this request.
-	Priority bacnet.NetworkPriority
+	Priority netprim.NetworkPriority
 
 	// ServiceRequest carries the unconfirmed service choice and its encoded parameters.
 	ServiceRequest UnconfirmedRequest
@@ -187,7 +187,7 @@ type UnconfirmedRequestICI struct {
 // delivers them to the receiving user element alongside the service parameters.
 type ConfirmedIndicationICI struct {
 	// Source is the BACnet address of the originating device.
-	Source bacnet.Address
+	Source netprim.Address
 
 	// InvokeID is the invoke identifier assigned by the originator's ASE.
 	InvokeID InvokeID
@@ -203,7 +203,7 @@ type ConfirmedIndicationICI struct {
 	MaxSegmentsAccepted MaxSegmentsAccepted
 
 	// Priority is the network message priority of the received request.
-	Priority bacnet.NetworkPriority
+	Priority netprim.NetworkPriority
 
 	// DataExpectingReply reports whether the originator expects a confirmed response.
 	// This is always true for confirmed service requests.
@@ -221,10 +221,10 @@ type ConfirmedIndicationICI struct {
 // delivers them to the receiving user element.
 type UnconfirmedIndicationICI struct {
 	// Source is the BACnet address of the originating device.
-	Source bacnet.Address
+	Source netprim.Address
 
 	// Priority is the network message priority of the received request.
-	Priority bacnet.NetworkPriority
+	Priority netprim.NetworkPriority
 
 	// ServiceRequest carries the unconfirmed service choice and its encoded parameters.
 	ServiceRequest UnconfirmedRequest
@@ -238,7 +238,7 @@ type UnconfirmedIndicationICI struct {
 // appropriate ACK PDU to the original requestor.
 type ConfirmedResponseICI struct {
 	// Destination is the BACnet address of the original requestor.
-	Destination bacnet.Address
+	Destination netprim.Address
 
 	// InvokeID matches the invoke identifier from the original confirmed request.
 	InvokeID InvokeID

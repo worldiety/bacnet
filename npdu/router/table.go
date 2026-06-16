@@ -5,12 +5,13 @@ import (
 	"sort"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/internal/util"
 	"go.wdy.de/bacnet/npdu"
 )
 
-func (r *routerImpl) ensureNetworkRoutesLocked(network bacnet.NetworkNumber) map[PortID]routeRecord {
+func (r *routerImpl) ensureNetworkRoutesLocked(network netprim.NetworkNumber) map[PortID]routeRecord {
 	ports, ok := r.routes[network]
 	if ok {
 		return ports
@@ -43,7 +44,7 @@ func (r *routerImpl) upsertRouteLocked(rec routeRecord) {
 }
 
 // AddConnectedRoute adds or replaces a directly connected route.
-func (r *routerImpl) AddConnectedRoute(port PortID, network bacnet.NetworkNumber, portInfo []byte) error {
+func (r *routerImpl) AddConnectedRoute(port PortID, network netprim.NetworkNumber, portInfo []byte) error {
 	if err := validateRoute(network, port, portInfo); err != nil {
 		return err
 	}
@@ -62,13 +63,13 @@ func (r *routerImpl) AddConnectedRoute(port PortID, network bacnet.NetworkNumber
 }
 
 // AddLearnedRoute adds or replaces a learned route with the given TTL.
-func (r *routerImpl) AddLearnedRoute(port PortID, network bacnet.NetworkNumber, ttl time.Duration) error {
+func (r *routerImpl) AddLearnedRoute(port PortID, network netprim.NetworkNumber, ttl time.Duration) error {
 	if err := validateRoute(network, port, nil); err != nil {
 		return err
 	}
 
 	if ttl <= 0 {
-		return bacnet.NewValidationError("ttl", ttl, ErrInvalidRoute)
+		return errors.NewValidationError("ttl", ttl, ErrInvalidRoute)
 	}
 
 	now := r.clock.Now()
@@ -85,12 +86,12 @@ func (r *routerImpl) AddLearnedRoute(port PortID, network bacnet.NetworkNumber, 
 }
 
 // RemoveRoute removes the route for network if present.
-func (r *routerImpl) RemoveRoute(network bacnet.NetworkNumber) {
+func (r *routerImpl) RemoveRoute(network netprim.NetworkNumber) {
 	delete(r.routes, network)
 }
 
 // RemoveRouteOnPort removes the route for network on a specific port if present.
-func (r *routerImpl) RemoveRouteOnPort(network bacnet.NetworkNumber, port PortID) {
+func (r *routerImpl) RemoveRouteOnPort(network netprim.NetworkNumber, port PortID) {
 	ports, ok := r.routes[network]
 	if !ok {
 		return
@@ -102,7 +103,7 @@ func (r *routerImpl) RemoveRouteOnPort(network bacnet.NetworkNumber, port PortID
 }
 
 // Lookup returns a snapshot of the route for network.
-func (r *routerImpl) Lookup(network bacnet.NetworkNumber) (*RouteEntry, bool) {
+func (r *routerImpl) Lookup(network netprim.NetworkNumber) (*RouteEntry, bool) {
 	route, ok := r.bestRouteLocked(network)
 	if !ok {
 		return nil, false
@@ -117,7 +118,7 @@ func (r *routerImpl) Lookup(network bacnet.NetworkNumber) (*RouteEntry, bool) {
 }
 
 // LookupAll returns all active routes for network in stable preference order.
-func (r *routerImpl) LookupAll(network bacnet.NetworkNumber) []RouteEntry {
+func (r *routerImpl) LookupAll(network netprim.NetworkNumber) []RouteEntry {
 	r.pruneExpiredLocked()
 	ports, ok := r.routes[network]
 	if !ok || len(ports) == 0 {
@@ -156,7 +157,7 @@ func (r *routerImpl) Snapshot() []RouteEntry {
 	r.pruneExpiredLocked()
 
 	type key struct {
-		network bacnet.NetworkNumber
+		network netprim.NetworkNumber
 		port    PortID
 	}
 

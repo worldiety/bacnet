@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // NetworkLayerMessageModel is a typed BACnet network-layer-message payload model.
@@ -20,12 +21,12 @@ type NetworkLayerMessageModel interface {
 
 // RoutingTablePortEntry models one routing-table port info entry.
 type RoutingTablePortEntry struct {
-	connectedDNET bacnet.NetworkNumber
+	connectedDNET netprim.NetworkNumber
 	portID        uint8
 	portInfo      []byte
 }
 
-func (e RoutingTablePortEntry) ConnectedDNET() bacnet.NetworkNumber {
+func (e RoutingTablePortEntry) ConnectedDNET() netprim.NetworkNumber {
 	return e.connectedDNET
 }
 
@@ -38,13 +39,13 @@ func (e RoutingTablePortEntry) PortInfo() []byte {
 }
 
 // NewRoutingTablePortEntry constructs a validated routing-table port entry.
-func NewRoutingTablePortEntry(connectedDNET bacnet.NetworkNumber, portID uint8, portInfo []byte) (RoutingTablePortEntry, error) {
+func NewRoutingTablePortEntry(connectedDNET netprim.NetworkNumber, portID uint8, portInfo []byte) (RoutingTablePortEntry, error) {
 	if connectedDNET.IsLocal() || connectedDNET.IsGlobalBroadcast() {
-		return RoutingTablePortEntry{}, bacnet.NewValidationError("connected dnet", connectedDNET, ErrInvalidNetworkNumber)
+		return RoutingTablePortEntry{}, errors.NewValidationError("connected dnet", connectedDNET, ErrInvalidNetworkNumber)
 	}
 
 	if len(portInfo) > 255 {
-		return RoutingTablePortEntry{}, bacnet.NewValidationError("port info", len(portInfo), ErrInvalidLength)
+		return RoutingTablePortEntry{}, errors.NewValidationError("port info", len(portInfo), ErrInvalidLength)
 	}
 
 	return RoutingTablePortEntry{
@@ -72,7 +73,7 @@ func encodePortEntryList(ports []RoutingTablePortEntry) []byte {
 	return out
 }
 
-func encodeNetworkList(networks []bacnet.NetworkNumber) ([]byte, error) {
+func encodeNetworkList(networks []netprim.NetworkNumber) ([]byte, error) {
 	err := validateNetworkList(networks)
 	if err != nil {
 		return nil, err
@@ -86,18 +87,18 @@ func encodeNetworkList(networks []bacnet.NetworkNumber) ([]byte, error) {
 	return out, nil
 }
 
-func decodeNetworkList(payload []byte, requireAtLeastOne bool) ([]bacnet.NetworkNumber, error) {
+func decodeNetworkList(payload []byte, requireAtLeastOne bool) ([]netprim.NetworkNumber, error) {
 	if requireAtLeastOne && len(payload) == 0 {
-		return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+		return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 	}
 
 	if len(payload)%2 != 0 {
-		return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+		return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 	}
 
-	networks := make([]bacnet.NetworkNumber, 0, len(payload)/2)
+	networks := make([]netprim.NetworkNumber, 0, len(payload)/2)
 	for i := 0; i < len(payload); i += 2 {
-		n := bacnet.NetworkNumber(binary.BigEndian.Uint16(payload[i:]))
+		n := netprim.NetworkNumber(binary.BigEndian.Uint16(payload[i:]))
 		networks = append(networks, n)
 	}
 
@@ -109,14 +110,14 @@ func decodeNetworkList(payload []byte, requireAtLeastOne bool) ([]bacnet.Network
 	return networks, nil
 }
 
-func validateNetworkList(networks []bacnet.NetworkNumber) error {
+func validateNetworkList(networks []netprim.NetworkNumber) error {
 	if len(networks) == 0 {
-		return bacnet.NewValidationError("networks", len(networks), ErrInvalidLength)
+		return errors.NewValidationError("networks", len(networks), ErrInvalidLength)
 	}
 
 	for _, n := range networks {
 		if n.IsLocal() || n.IsGlobalBroadcast() {
-			return bacnet.NewValidationError("network", n, ErrInvalidNetworkNumber)
+			return errors.NewValidationError("network", n, ErrInvalidNetworkNumber)
 		}
 	}
 
@@ -126,18 +127,18 @@ func validateNetworkList(networks []bacnet.NetworkNumber) error {
 // WhoIsRouterToNetworkMessage models who-is-router-to-network (0x00).
 // DNET is optional; nil means "any network".
 type WhoIsRouterToNetworkMessage struct {
-	DNET *bacnet.NetworkNumber
+	DNET *netprim.NetworkNumber
 }
 
 // NewWhoIsRouterToNetworkMessage constructs a who-is-router-to-network model.
-func NewWhoIsRouterToNetworkMessage(dnet *bacnet.NetworkNumber) (WhoIsRouterToNetworkMessage, error) {
+func NewWhoIsRouterToNetworkMessage(dnet *netprim.NetworkNumber) (WhoIsRouterToNetworkMessage, error) {
 	if dnet == nil {
 		//DNET optional => missing not an error
 		return WhoIsRouterToNetworkMessage{}, nil
 	}
 
 	if dnet.IsLocal() || dnet.IsGlobalBroadcast() {
-		return WhoIsRouterToNetworkMessage{}, bacnet.NewValidationError("dnet", *dnet, ErrInvalidNetworkNumber)
+		return WhoIsRouterToNetworkMessage{}, errors.NewValidationError("dnet", *dnet, ErrInvalidNetworkNumber)
 	}
 
 	return WhoIsRouterToNetworkMessage{DNET: new(*dnet)}, nil
@@ -167,11 +168,11 @@ func (m WhoIsRouterToNetworkMessage) Valid() bool {
 
 // IAmRouterToNetworkMessage models i-am-router-to-network (0x01).
 type IAmRouterToNetworkMessage struct {
-	Networks []bacnet.NetworkNumber
+	Networks []netprim.NetworkNumber
 }
 
 // NewIAmRouterToNetworkMessage constructs an i-am-router-to-network model.
-func NewIAmRouterToNetworkMessage(networks []bacnet.NetworkNumber) (IAmRouterToNetworkMessage, error) {
+func NewIAmRouterToNetworkMessage(networks []netprim.NetworkNumber) (IAmRouterToNetworkMessage, error) {
 	copied := slices.Clone(networks)
 
 	if err := validateNetworkList(copied); err != nil {
@@ -196,12 +197,12 @@ func (m IAmRouterToNetworkMessage) Valid() bool {
 
 // RouterBusyToNetworkMessage models router-busy-to-network (0x04).
 type RouterBusyToNetworkMessage struct {
-	Networks []bacnet.NetworkNumber
+	Networks []netprim.NetworkNumber
 }
 
 // NewRouterBusyToNetworkMessage constructs a router-busy-to-network model.
-func NewRouterBusyToNetworkMessage(networks []bacnet.NetworkNumber) (RouterBusyToNetworkMessage, error) {
-	copied := append([]bacnet.NetworkNumber(nil), networks...)
+func NewRouterBusyToNetworkMessage(networks []netprim.NetworkNumber) (RouterBusyToNetworkMessage, error) {
+	copied := append([]netprim.NetworkNumber(nil), networks...)
 	if err := validateNetworkList(copied); err != nil {
 		return RouterBusyToNetworkMessage{}, err
 	}
@@ -224,12 +225,12 @@ func (m RouterBusyToNetworkMessage) Valid() bool {
 
 // RouterAvailableToNetworkMessage models router-available-to-network (0x05).
 type RouterAvailableToNetworkMessage struct {
-	Networks []bacnet.NetworkNumber
+	Networks []netprim.NetworkNumber
 }
 
 // NewRouterAvailableToNetworkMessage constructs a router-available-to-network model.
-func NewRouterAvailableToNetworkMessage(networks []bacnet.NetworkNumber) (RouterAvailableToNetworkMessage, error) {
-	copied := append([]bacnet.NetworkNumber(nil), networks...)
+func NewRouterAvailableToNetworkMessage(networks []netprim.NetworkNumber) (RouterAvailableToNetworkMessage, error) {
+	copied := append([]netprim.NetworkNumber(nil), networks...)
 	if err := validateNetworkList(copied); err != nil {
 		return RouterAvailableToNetworkMessage{}, err
 	}
@@ -252,14 +253,14 @@ func (m RouterAvailableToNetworkMessage) Valid() bool {
 
 // ICouldBeRouterToNetworkMessage models i-could-be-router-to-network (0x02).
 type ICouldBeRouterToNetworkMessage struct {
-	DNET             bacnet.NetworkNumber
+	DNET             netprim.NetworkNumber
 	PerformanceIndex uint8
 }
 
 // NewICouldBeRouterToNetworkMessage constructs an i-could-be-router-to-network model.
-func NewICouldBeRouterToNetworkMessage(dnet bacnet.NetworkNumber, performanceIndex uint8) (ICouldBeRouterToNetworkMessage, error) {
+func NewICouldBeRouterToNetworkMessage(dnet netprim.NetworkNumber, performanceIndex uint8) (ICouldBeRouterToNetworkMessage, error) {
 	if dnet.IsLocal() || dnet.IsGlobalBroadcast() {
-		return ICouldBeRouterToNetworkMessage{}, bacnet.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
+		return ICouldBeRouterToNetworkMessage{}, errors.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
 	}
 	return ICouldBeRouterToNetworkMessage{DNET: dnet, PerformanceIndex: performanceIndex}, nil
 }
@@ -281,18 +282,18 @@ func (m ICouldBeRouterToNetworkMessage) Valid() bool {
 
 // RejectMessageToNetworkMessage models reject-message-to-network (0x03).
 type RejectMessageToNetworkMessage struct {
-	DNET   bacnet.NetworkNumber
+	DNET   netprim.NetworkNumber
 	Reason NlmRejectReason
 }
 
 // NewRejectMessageToNetworkMessage constructs a reject-message-to-network model.
 // reason must be a valid NLM reject reason per clause 6.6.4.
-func NewRejectMessageToNetworkMessage(dnet bacnet.NetworkNumber, reason NlmRejectReason) (RejectMessageToNetworkMessage, error) {
+func NewRejectMessageToNetworkMessage(dnet netprim.NetworkNumber, reason NlmRejectReason) (RejectMessageToNetworkMessage, error) {
 	if dnet.IsLocal() || dnet.IsGlobalBroadcast() {
-		return RejectMessageToNetworkMessage{}, bacnet.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
+		return RejectMessageToNetworkMessage{}, errors.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
 	}
 	if !reason.ValidStandard() {
-		return RejectMessageToNetworkMessage{}, bacnet.NewValidationError("reason", reason, ErrInvalidMessage)
+		return RejectMessageToNetworkMessage{}, errors.NewValidationError("reason", reason, ErrInvalidMessage)
 	}
 	return RejectMessageToNetworkMessage{DNET: dnet, Reason: reason}, nil
 }
@@ -322,7 +323,7 @@ func NewInitializeRoutingTableMessage(ports []RoutingTablePortEntry) (Initialise
 	copied := make([]RoutingTablePortEntry, len(ports))
 	for i := range ports {
 		if !ports[i].valid() {
-			return InitialiseRoutingTableMessage{}, bacnet.NewValidationError("ports", i, ErrInvalidLength)
+			return InitialiseRoutingTableMessage{}, errors.NewValidationError("ports", i, ErrInvalidLength)
 		}
 		copied[i] = ports[i]
 		copied[i].portInfo = slices.Clone(ports[i].portInfo)
@@ -362,7 +363,7 @@ func NewInitializeRoutingTableAckMessage(ports []RoutingTablePortEntry) (Initial
 	copied := make([]RoutingTablePortEntry, len(ports))
 	for i := range ports {
 		if !ports[i].valid() {
-			return InitialiseRoutingTableAckMessage{}, bacnet.NewValidationError("ports", i, ErrInvalidLength)
+			return InitialiseRoutingTableAckMessage{}, errors.NewValidationError("ports", i, ErrInvalidLength)
 		}
 		copied[i] = ports[i]
 		copied[i].portInfo = slices.Clone(ports[i].portInfo)
@@ -395,14 +396,14 @@ func (m InitialiseRoutingTableAckMessage) Valid() bool {
 
 // EstablishConnectionToNetworkMessage models establish-connection-to-network (0x08).
 type EstablishConnectionToNetworkMessage struct {
-	DNET            bacnet.NetworkNumber
+	DNET            netprim.NetworkNumber
 	TerminationTime uint8
 }
 
 // NewEstablishConnectionToNetworkMessage constructs an establish-connection-to-network model.
-func NewEstablishConnectionToNetworkMessage(dnet bacnet.NetworkNumber, terminationTime uint8) (EstablishConnectionToNetworkMessage, error) {
+func NewEstablishConnectionToNetworkMessage(dnet netprim.NetworkNumber, terminationTime uint8) (EstablishConnectionToNetworkMessage, error) {
 	if dnet.IsLocal() || dnet.IsGlobalBroadcast() {
-		return EstablishConnectionToNetworkMessage{}, bacnet.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
+		return EstablishConnectionToNetworkMessage{}, errors.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
 	}
 
 	return EstablishConnectionToNetworkMessage{DNET: dnet, TerminationTime: terminationTime}, nil
@@ -426,13 +427,13 @@ func (m EstablishConnectionToNetworkMessage) Valid() bool {
 
 // DisconnectConnectionToNetworkMessage models disconnect-connection-to-network (0x09).
 type DisconnectConnectionToNetworkMessage struct {
-	DNET bacnet.NetworkNumber
+	DNET netprim.NetworkNumber
 }
 
 // NewDisconnectConnectionToNetworkMessage constructs a disconnect-connection-to-network model.
-func NewDisconnectConnectionToNetworkMessage(dnet bacnet.NetworkNumber) (DisconnectConnectionToNetworkMessage, error) {
+func NewDisconnectConnectionToNetworkMessage(dnet netprim.NetworkNumber) (DisconnectConnectionToNetworkMessage, error) {
 	if dnet.IsLocal() || dnet.IsGlobalBroadcast() {
-		return DisconnectConnectionToNetworkMessage{}, bacnet.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
+		return DisconnectConnectionToNetworkMessage{}, errors.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
 	}
 
 	return DisconnectConnectionToNetworkMessage{DNET: dnet}, nil
@@ -471,14 +472,14 @@ func (m WhatIsNetworkNumberMessage) Valid() bool { return true }
 
 // NetworkNumberIsMessage models network-number-is (0x13).
 type NetworkNumberIsMessage struct {
-	NetworkNumber bacnet.NetworkNumber
+	NetworkNumber netprim.NetworkNumber
 	Configured    bool
 }
 
 // NewNetworkNumberIsMessage constructs a network-number-is model.
-func NewNetworkNumberIsMessage(networkNumber bacnet.NetworkNumber, configured bool) (NetworkNumberIsMessage, error) {
+func NewNetworkNumberIsMessage(networkNumber netprim.NetworkNumber, configured bool) (NetworkNumberIsMessage, error) {
 	if networkNumber.IsLocal() || networkNumber.IsGlobalBroadcast() {
-		return NetworkNumberIsMessage{}, bacnet.NewValidationError("network number", networkNumber, ErrInvalidNetworkNumber)
+		return NetworkNumberIsMessage{}, errors.NewValidationError("network number", networkNumber, ErrInvalidNetworkNumber)
 	}
 
 	return NetworkNumberIsMessage{NetworkNumber: networkNumber, Configured: configured}, nil
@@ -513,7 +514,7 @@ type ProprietaryNetworkLayerMessageModel struct {
 // NewProprietaryNetworkLayerMessageModel constructs a proprietary network-layer message model.
 func NewProprietaryNetworkLayerMessageModel(messageType NetworkLayerMessageType, vendorID uint16, payload []byte) (ProprietaryNetworkLayerMessageModel, error) {
 	if !messageType.IsProprietary() {
-		return ProprietaryNetworkLayerMessageModel{}, bacnet.NewValidationError("message type", messageType, ErrInvalidMessage)
+		return ProprietaryNetworkLayerMessageModel{}, errors.NewValidationError("message type", messageType, ErrInvalidMessage)
 	}
 	return ProprietaryNetworkLayerMessageModel{
 		MessageType: messageType,
@@ -547,9 +548,9 @@ func decodeRoutingTableEntries(payload []byte) ([]RoutingTablePortEntry, error) 
 		if cursor+4 > len(payload) {
 			return nil, fmt.Errorf("%w: routing-table payload truncated in port entry header %d", ErrInvalidLength, i)
 		}
-		connectedDNET := bacnet.NetworkNumber(binary.BigEndian.Uint16(payload[cursor:]))
+		connectedDNET := netprim.NetworkNumber(binary.BigEndian.Uint16(payload[cursor:]))
 		if connectedDNET.IsLocal() || connectedDNET.IsGlobalBroadcast() {
-			return nil, bacnet.NewValidationError("connected dnet", connectedDNET, ErrInvalidNetworkNumber)
+			return nil, errors.NewValidationError("connected dnet", connectedDNET, ErrInvalidNetworkNumber)
 		}
 
 		portID := payload[cursor+2]
@@ -580,19 +581,19 @@ func decodeRoutingTableEntries(payload []byte) ([]RoutingTablePortEntry, error) 
 // DecodeNetworkLayerMessageModel decodes a typed model from header and payload.
 func DecodeNetworkLayerMessageModel(header NetworkLayerMessageHeader, payload []byte) (NetworkLayerMessageModel, error) {
 	if !header.structureValid() {
-		return nil, bacnet.NewValidationError("network layer message header", header, ErrInvalidMessage)
+		return nil, errors.NewValidationError("network layer message header", header, ErrInvalidMessage)
 	}
 
 	messageType := header.MessageType
 	if messageType.IsProprietary() {
 		if header.VendorID == nil {
-			return nil, bacnet.NewValidationError("vendor id", nil, ErrInvalidMessage)
+			return nil, errors.NewValidationError("vendor id", nil, ErrInvalidMessage)
 		}
 		return NewProprietaryNetworkLayerMessageModel(messageType, *header.VendorID, payload)
 	}
 
 	if messageType.IsReserved() || !messageType.ValidStandard() {
-		return nil, bacnet.NewValidationError("message type", messageType, ErrInvalidMessage)
+		return nil, errors.NewValidationError("message type", messageType, ErrInvalidMessage)
 	}
 
 	switch messageType {
@@ -602,9 +603,9 @@ func DecodeNetworkLayerMessageModel(header NetworkLayerMessageHeader, payload []
 		case 0:
 			return NewWhoIsRouterToNetworkMessage(nil)
 		case 2:
-			return NewWhoIsRouterToNetworkMessage(new(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload))))
+			return NewWhoIsRouterToNetworkMessage(new(netprim.NetworkNumber(binary.BigEndian.Uint16(payload))))
 		default:
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
 	case NetworkLayerMessageTypeIAmRouterToNetwork:
 		networks, err := decodeNetworkList(payload, true)
@@ -626,14 +627,14 @@ func DecodeNetworkLayerMessageModel(header NetworkLayerMessageHeader, payload []
 		return NewRouterAvailableToNetworkMessage(networks)
 	case NetworkLayerMessageTypeICouldBeRouterToNetwork:
 		if len(payload) != 3 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
-		return NewICouldBeRouterToNetworkMessage(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload)), payload[2])
+		return NewICouldBeRouterToNetworkMessage(netprim.NetworkNumber(binary.BigEndian.Uint16(payload)), payload[2])
 	case NetworkLayerMessageTypeRejectMessageToNetwork:
 		if len(payload) != 3 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
-		return NewRejectMessageToNetworkMessage(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload)), NlmRejectReason(payload[2]))
+		return NewRejectMessageToNetworkMessage(netprim.NetworkNumber(binary.BigEndian.Uint16(payload)), NlmRejectReason(payload[2]))
 	case NetworkLayerMessageTypeInitializeRoutingTable:
 		ports, err := decodeRoutingTableEntries(payload)
 		if err != nil {
@@ -648,31 +649,31 @@ func DecodeNetworkLayerMessageModel(header NetworkLayerMessageHeader, payload []
 		return NewInitializeRoutingTableAckMessage(ports)
 	case NetworkLayerMessageTypeEstablishConnectionToNetwork:
 		if len(payload) != 3 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
-		return NewEstablishConnectionToNetworkMessage(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload)), payload[2])
+		return NewEstablishConnectionToNetworkMessage(netprim.NetworkNumber(binary.BigEndian.Uint16(payload)), payload[2])
 	case NetworkLayerMessageTypeDisconnectConnectionToNetwork:
 		if len(payload) != 2 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
-		return NewDisconnectConnectionToNetworkMessage(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload)))
+		return NewDisconnectConnectionToNetworkMessage(netprim.NetworkNumber(binary.BigEndian.Uint16(payload)))
 	case NetworkLayerMessageTypeWhatIsNetworkNumber:
 		if len(payload) != 0 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
 		return NewWhatIsNetworkNumberMessage()
 	case NetworkLayerMessageTypeNetworkNumberIs:
 		if len(payload) != 3 {
-			return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+			return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 		}
 		configured := false
 		if payload[2] == 0x01 {
 			configured = true
 		} else if payload[2] != 0x00 {
-			return nil, bacnet.NewValidationError("network-number-is flag", payload[2], ErrInvalidMessage)
+			return nil, errors.NewValidationError("network-number-is flag", payload[2], ErrInvalidMessage)
 		}
-		return NewNetworkNumberIsMessage(bacnet.NetworkNumber(binary.BigEndian.Uint16(payload)), configured)
+		return NewNetworkNumberIsMessage(netprim.NetworkNumber(binary.BigEndian.Uint16(payload)), configured)
 	default:
-		return nil, bacnet.NewValidationError("message type", messageType, ErrInvalidMessage)
+		return nil, errors.NewValidationError("message type", messageType, ErrInvalidMessage)
 	}
 }

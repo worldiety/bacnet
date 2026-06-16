@@ -19,7 +19,12 @@ conversation with the maintainer.
 
 | Path | Status | Purpose |
 |---|---|---|
-| `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
+| `.` (`bacnet`) | active | Package root — will be populated with higher-level types and functions in a later restructuring step; currently contains only `doc.go` |
+| `common/` | active | Landing doc for the `common/*` sub-packages |
+| `common/errors/` | active | `ValidationError`, `NewValidationError`, `ErrInvalid*` sentinels — shared validation primitives used across all packages |
+| `common/log/` | active | Package-level `Logger` (`*slog.Logger`) — the single logger used by all packages |
+| `common/netprim/` | active | Network primitives: `NetworkNumber`, `NetworkPriority` + constants, `LocalNetwork`, `GlobalBroadcastNetwork`, `ProtocolVersion`, `IpDefaultUdpPort`; `Address`, `NewAddress` and methods |
+| `common/types/` | active | Application-layer types: `DeviceInstance`, `ObjectType` + constants, `ObjectIdentifier`, `PropertyIdentifier` + constants, `RejectReason` + constants, `MaxInstanceNumber`, `MaxObjectType` |
 | `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `bbmd.go`; `DeviceIp4` interface + `deviceImpl` (local broadcast + foreign device registration) in `device.go` |
 | `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking + clause 5.4 state-machine scaffolding); typed `Client` wrapper (`client.go`, `client_discovery.go`, `client_object_access.go`, `client_cov.go`, `client_extend.go`); `UserElement` wrapper |
 | `encoding/` | active | BACnet tag/value encoding; `ParseTag`, `EncodeOpeningTag`, `EncodeApplicationPrimitive`, `EncodeUnsigned`/`DecodeUnsigned` |
@@ -40,9 +45,10 @@ conversation with the maintainer.
 - Do not use external dependencies unless absolutely necessary. If you need to use a dependency, make sure it is well-maintained and has a good reputation. Double check with the maintainer whether using a dependency is okay.
 
 - Library internal dependencies must be top down in the OSI Layer Model (e.g. `apdu` can depend on `npdu`, but `npdu` cannot depend on `apdu`).
+- The `common/*` sub-packages are the canonical home for types and values shared across multiple packages. The internal dependency order within `common/` is: `common/errors` → nothing; `common/log` → nothing; `common/netprim` → `common/errors`; `common/types` → `common/errors`.
 - The `internal/util` package is available for shared non-public helpers (e.g. `CopyPointersValue[T]`); use it for cross-package helpers to avoid duplication, but do not create package-local copies of the same helper.
 - If you notice a package needs to share code with another package, but the shared code does not fit cleanly into either package's public API, consider creating a new function in `internal/util`, or a new internal package. This is encouraged to avoid duplication of code and to keep the codebase organized.
-- Values that need to be accessed by multiple packages should be defined in the root `bacnet` package (e.g. `NetworkPriority`, `PropertyIdentifier`) or an internal package to avoid circular dependencies between subpackages (which are not allowed in go). Values that shall be visible to the library's users should be defined in the root `bacnet` package; values that are only used internally by the library can be defined in an internal package (e.g. `internal/constants`).
+- Values shared across packages must live in the appropriate `common/*` sub-package (e.g. `NetworkPriority` in `common/netprim`, `PropertyIdentifier` in `common/types`). Values that are only used internally by the library can be defined in an internal package (e.g. `internal/constants`).
 
 ## Development requirements
 - The project is still in the prototype phase, therefor the public API is not yet stable and may be changed when needed.
@@ -60,17 +66,17 @@ conversation with the maintainer.
 
 ### Coding conventions
 - **Constructor pattern**: exported constructor functions are named `NewX(args) (T, error)` and validate all inputs before returning (e.g. `NewObjectIdentifier`, `NewDeviceInstance`, `NewAddress`).
-- **Validation errors**: use the NewValidationError function to construct the error
+- **Validation errors**: use the `errors.NewValidationError` function from `common/errors` to construct the error
 - **`String()` methods**: use the BACnet specification's hyphen-separated names (e.g. `"analog-input"`, `"object-identifier"`, `"present-value"`). Unknown values fall back to `"type-name(N)"` (e.g. `"object-type(2048)"`). Composite types use comma-separated `"type,instance"` format (e.g. `ObjectIdentifier.String()` returns `"device,1234"`).
 - **Defensive copies**: slice-backed fields must be copied on both construction and access (see `NewAddress` and `Address.MACBytes()`).
 - **APDU/NPDU byte ownership**: clone byte slices at public package boundaries (API/transport ingress and egress to callers), but avoid redundant cloning on internal ASE/state-machine paths once ownership is established. See `apdu/README.md`, `apdu/ase.go` (`OnInboundNPDU`), and `npdu/doc.go`.
 - **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`). Types with both standard and proprietary ranges additionally expose `ValidStandard() bool` (e.g. `RejectReason`, `NlmRejectReason`, `NetworkLayerMessageType`).
-- **`PropertyIdentifier`**: implemented in `types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
+- **`PropertyIdentifier`**: implemented in `common/types/types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
 - **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
 - **Types**: define types for everything that has a specific meaning in the BACnet context, even if the type is just a thin wrapper of a primitive (e.g. `type DuplicateCount uint8` or `type transactionKey string`); this allows for better type safety and more descriptive code.
 
 ### Test conventions
-- Test files use the same package as the code under test (e.g. `package bacnet`, `package apdu`, `package bip`) — **not** `*_test` external packages.
+- Test files use the same package as the code under test (e.g. `package netprim`, `package apdu`, `package bip`) — **not** `*_test` external packages.
 - Tests follow the table-driven pattern using `t.Run` with a `tests []struct{name, input, want/wantErr}` slice — use this for validation and `String()` coverage.
 - Straight-line (non-table) tests are acceptable for mutation/side-effect checks where a table adds no clarity (e.g. `TestNewAddressCopiesMAC`).
 - Use `errors.Is(err, ErrXxx)` for all error assertions — never compare error strings directly.
@@ -94,8 +100,9 @@ conversation with the maintainer.
   - This means `v := new(2)` and `a := 2; v := &a` both result in v being a pointer to an int with value 2.
 
 ## Logging
-- `bacnet.Logger` is the single package-level `*slog.Logger` used by all packages — do not instantiate per-package loggers.
-- Pattern: `bacnet.Logger.Debug("description", "field", value, "error", err)`.
+- `log.Logger` is the single package-level `*slog.Logger` used by all packages — do not instantiate per-package loggers.
+- Import: `"go.wdy.de/bacnet/common/log"`.
+- Pattern: `log.Logger.Debug("description", "field", value, "error", err)`.
 
 ## `apdu` package gotchas
 - Client-side segmented send/receive is **not implemented** (v1 scope). A segmented ComplexACK received by a client returns `ErrSegmentationNotSupported`. Server-side segmented receive and ComplexACK response are implemented.

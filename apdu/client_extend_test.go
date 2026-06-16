@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -14,12 +15,12 @@ func TestClientDeviceManagementSimpleACK(t *testing.T) {
 	tests := []struct {
 		name    string
 		service ServiceChoice
-		invoke  func(*clientImpl, context.Context, bacnet.Address) error
+		invoke  func(*clientImpl, context.Context, netprim.Address) error
 	}{
 		{
 			name:    "device-communication-control",
 			service: ServiceChoiceDeviceCommunicationControl,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
 				duration := uint16(60)
 				password := "secret"
 				req := DeviceCommunicationControlRequest{
@@ -33,7 +34,7 @@ func TestClientDeviceManagementSimpleACK(t *testing.T) {
 		{
 			name:    "reinitialize-device",
 			service: ServiceChoiceReinitializeDevice,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
 				password := "secret"
 				req := ReinitializeDeviceRequest{State: ReinitializeDeviceStateWarmStart, Password: &password}
 				return c.ReinitializeDevice(ctx, dst, req)
@@ -50,7 +51,7 @@ func TestClientDeviceManagementSimpleACK(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			client := clientRaw.(*clientImpl)
-			dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+			dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 			ch := make(chan error, 1)
 			go func() { ch <- tt.invoke(client, context.Background(), dst) }()
@@ -68,7 +69,7 @@ func TestClientDeviceManagementSimpleACK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("encodeAPDU: %v", err)
 			}
-			ackNPDU, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+			ackNPDU, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 			if err := ase.OnInboundNPDU(context.Background(), dst, *ackNPDU); err != nil {
 				t.Fatalf("OnInboundNPDU: %v", err)
 			}
@@ -83,17 +84,17 @@ func TestClientDeviceManagementSimpleACK(t *testing.T) {
 func TestClientRemoteErrorMapping(t *testing.T) {
 	type methodCall struct {
 		service ServiceChoice
-		invoke  func(*clientImpl, context.Context, bacnet.Address) error
+		invoke  func(*clientImpl, context.Context, netprim.Address) error
 	}
 
 	calls := []methodCall{
 		{
 			service: ServiceChoiceReadRange,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
-				objID, _ := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogInput, 7)
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
+				objID, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 7)
 				req := ReadRangeRequest{
 					ObjectIdentifier:   objID,
-					PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+					PropertyIdentifier: types.PropertyIdentifierPresentValue,
 					ByPosition:         &ReadRangeByPosition{ReferenceIndex: 1, Count: 1},
 				}
 				_, err := c.ReadRange(ctx, dst, req)
@@ -102,14 +103,14 @@ func TestClientRemoteErrorMapping(t *testing.T) {
 		},
 		{
 			service: ServiceChoiceDeviceCommunicationControl,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
 				req := DeviceCommunicationControlRequest{EnableDisable: DeviceCommunicationControlEnable}
 				return c.DeviceCommunicationControl(ctx, dst, req)
 			},
 		},
 		{
 			service: ServiceChoiceReinitializeDevice,
-			invoke: func(c *clientImpl, ctx context.Context, dst bacnet.Address) error {
+			invoke: func(c *clientImpl, ctx context.Context, dst netprim.Address) error {
 				req := ReinitializeDeviceRequest{State: ReinitializeDeviceStateColdStart}
 				return c.ReinitializeDevice(ctx, dst, req)
 			},
@@ -137,7 +138,7 @@ func TestClientRemoteErrorMapping(t *testing.T) {
 					t.Fatalf("NewClient: %v", err)
 				}
 				client := clientRaw.(*clientImpl)
-				dst, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+				dst, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
 				ch := make(chan error, 1)
 				go func() { ch <- call.invoke(client, context.Background(), dst) }()
@@ -156,7 +157,7 @@ func TestClientRemoteErrorMapping(t *testing.T) {
 				if err != nil {
 					t.Fatalf("encodeAPDU: %v", err)
 				}
-				inbound, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, inboundBytes)
+				inbound, _ := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, inboundBytes)
 				if err := ase.OnInboundNPDU(context.Background(), dst, *inbound); err != nil {
 					t.Fatalf("OnInboundNPDU: %v", err)
 				}

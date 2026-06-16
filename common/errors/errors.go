@@ -1,4 +1,4 @@
-package bacnet
+package errors
 
 import (
 	"errors"

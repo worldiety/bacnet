@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	bacencoding "go.wdy.de/bacnet/encoding"
 )
 
@@ -19,7 +22,7 @@ type ClientConfig struct {
 	MaxAPDULengthAccepted MaxApduLengthAccepted
 	SegmentationSupported SegmentationSupport
 	MaxSegmentsAccepted   MaxSegmentsAccepted
-	Priority              bacnet.NetworkPriority
+	Priority              netprim.NetworkPriority
 }
 
 // Client provides typed convenience methods for commonly used client services.
@@ -28,41 +31,41 @@ type ClientConfig struct {
 // unchanged while removing manual payload construction for the covered services.
 type Client interface {
 	// WhoIs sends an unconfirmed Who-Is request.
-	WhoIs(ctx context.Context, dst bacnet.Address, req WhoIsRequest) error
+	WhoIs(ctx context.Context, dst netprim.Address, req WhoIsRequest) error
 
 	// WhoHas sends an unconfirmed Who-Has request.
-	WhoHas(ctx context.Context, dst bacnet.Address, req WhoHasRequest) error
+	WhoHas(ctx context.Context, dst netprim.Address, req WhoHasRequest) error
 
 	// InvokeConfirmedRaw sends a confirmed request and returns the raw service-ack payload.
 	// For SimpleACK this returns nil, nil.
-	InvokeConfirmedRaw(ctx context.Context, dst bacnet.Address, serviceChoice ServiceChoice, payload []byte) ([]byte, error)
+	InvokeConfirmedRaw(ctx context.Context, dst netprim.Address, serviceChoice ServiceChoice, payload []byte) ([]byte, error)
 
 	// ReadProperty sends a confirmed ReadProperty request and decodes ReadProperty-ACK.
-	ReadProperty(ctx context.Context, dst bacnet.Address, req ReadPropertyRequest) (ReadPropertyACK, error)
+	ReadProperty(ctx context.Context, dst netprim.Address, req ReadPropertyRequest) (ReadPropertyACK, error)
 
 	// ReadPropertyMultiple sends a confirmed ReadPropertyMultiple request and decodes ReadPropertyMultiple-ACK.
-	ReadPropertyMultiple(ctx context.Context, dst bacnet.Address, req ReadPropertyMultipleRequest) (ReadPropertyMultipleACK, error)
+	ReadPropertyMultiple(ctx context.Context, dst netprim.Address, req ReadPropertyMultipleRequest) (ReadPropertyMultipleACK, error)
 
 	// WriteProperty sends a confirmed WriteProperty request and expects SimpleACK.
-	WriteProperty(ctx context.Context, dst bacnet.Address, req WritePropertyRequest) error
+	WriteProperty(ctx context.Context, dst netprim.Address, req WritePropertyRequest) error
 
 	// WritePropertyMultiple sends a confirmed WritePropertyMultiple request and expects SimpleACK.
-	WritePropertyMultiple(ctx context.Context, dst bacnet.Address, req WritePropertyMultipleRequest) error
+	WritePropertyMultiple(ctx context.Context, dst netprim.Address, req WritePropertyMultipleRequest) error
 
 	// ReadRange sends a confirmed ReadRange request and decodes ReadRange-ACK.
-	ReadRange(ctx context.Context, dst bacnet.Address, req ReadRangeRequest) (ReadRangeACK, error)
+	ReadRange(ctx context.Context, dst netprim.Address, req ReadRangeRequest) (ReadRangeACK, error)
 
 	// DeviceCommunicationControl sends a confirmed DeviceCommunicationControl request and expects SimpleACK.
-	DeviceCommunicationControl(ctx context.Context, dst bacnet.Address, req DeviceCommunicationControlRequest) error
+	DeviceCommunicationControl(ctx context.Context, dst netprim.Address, req DeviceCommunicationControlRequest) error
 
 	// ReinitializeDevice sends a confirmed ReinitializeDevice request and expects SimpleACK.
-	ReinitializeDevice(ctx context.Context, dst bacnet.Address, req ReinitializeDeviceRequest) error
+	ReinitializeDevice(ctx context.Context, dst netprim.Address, req ReinitializeDeviceRequest) error
 
 	// SubscribeCOV sends a confirmed SubscribeCOV request and expects SimpleACK.
-	SubscribeCOV(ctx context.Context, dst bacnet.Address, req SubscribeCOVRequest) error
+	SubscribeCOV(ctx context.Context, dst netprim.Address, req SubscribeCOVRequest) error
 
 	// SubscribeCOVProperty sends a confirmed SubscribeCOVProperty request and expects SimpleACK.
-	SubscribeCOVProperty(ctx context.Context, dst bacnet.Address, req SubscribeCOVPropertyRequest) error
+	SubscribeCOVProperty(ctx context.Context, dst netprim.Address, req SubscribeCOVPropertyRequest) error
 
 	// HandleIAm registers a typed handler for incoming unconfirmed I-Am indications.
 	RegisterIAmHandler(handler IAmHandler) error
@@ -91,25 +94,25 @@ type ConfirmedCodec[Req any, Ack any] struct {
 func InvokeConfirmedTyped[Req any, Ack any](
 	ctx context.Context,
 	client Client,
-	dst bacnet.Address,
+	dst netprim.Address,
 	codec ConfirmedCodec[Req, Ack],
 	req Req,
 ) (Ack, error) {
 	var zero Ack
 
 	if codec.EncodeRequest == nil || codec.DecodeACK == nil {
-		return zero, bacnet.NewValidationError("codec", codec.ServiceChoice, ErrInvalidASEConfig)
+		return zero, errors.NewValidationError("codec", codec.ServiceChoice, ErrInvalidASEConfig)
 	}
 
 	payload, err := codec.EncodeRequest(req)
 	if err != nil {
-		bacnet.Logger.Error("apdu invoke typed encode request", "error", err, "service", codec.ServiceChoice)
+		log.Logger.Error("apdu invoke typed encode request", "error", err, "service", codec.ServiceChoice)
 		return zero, err
 	}
 
 	ackPayload, err := client.InvokeConfirmedRaw(ctx, dst, codec.ServiceChoice, payload)
 	if err != nil {
-		bacnet.Logger.Error("apdu invoke typed confirmed raw", "error", err, "service", codec.ServiceChoice)
+		log.Logger.Error("apdu invoke typed confirmed raw", "error", err, "service", codec.ServiceChoice)
 		return zero, err
 	}
 
@@ -126,7 +129,7 @@ type clientImpl struct {
 func NewClient(ase ASE, cfg ClientConfig) (Client, error) {
 	ue, err := NewUserElement(ase)
 	if err != nil {
-		bacnet.Logger.Error("apdu new client create user element", "error", err)
+		log.Logger.Error("apdu new client create user element", "error", err)
 		return nil, err
 	}
 
@@ -139,11 +142,11 @@ func NewClient(ase ASE, cfg ClientConfig) (Client, error) {
 	}
 
 	if !cfg.Priority.Valid() {
-		cfg.Priority = bacnet.NetworkPriorityNormal
+		cfg.Priority = netprim.NetworkPriorityNormal
 	}
 
 	if !cfg.MaxSegmentsAccepted.Valid() {
-		return nil, bacnet.NewValidationError("max segments accepted", cfg.MaxSegmentsAccepted, ErrInvalidASEConfig)
+		return nil, errors.NewValidationError("max segments accepted", cfg.MaxSegmentsAccepted, ErrInvalidASEConfig)
 	}
 
 	return &clientImpl{ue: ue, cfg: cfg, iam: newIAmDispatcher(ue)}, nil
@@ -152,14 +155,14 @@ func NewClient(ase ASE, cfg ClientConfig) (Client, error) {
 // WhoIsRequest models the optional device-instance range fields of Who-Is.
 type WhoIsRequest struct {
 	// LowLimit is the optional lower bound of the device instance range.
-	LowLimit *bacnet.DeviceInstance
+	LowLimit *types.DeviceInstance
 	// HighLimit is the optional upper bound of the device instance range.
-	HighLimit *bacnet.DeviceInstance
+	HighLimit *types.DeviceInstance
 }
 
 // NewWhoIsRequest constructs a validated WhoIsRequest.
 // lowLimit and highLimit must either both be nil or both be set.
-func NewWhoIsRequest(lowLimit, highLimit *bacnet.DeviceInstance) (WhoIsRequest, error) {
+func NewWhoIsRequest(lowLimit, highLimit *types.DeviceInstance) (WhoIsRequest, error) {
 	res := WhoIsRequest{LowLimit: lowLimit, HighLimit: highLimit}
 	if err := validateWhoIsRequest(res); err != nil {
 		return WhoIsRequest{}, err
@@ -169,7 +172,7 @@ func NewWhoIsRequest(lowLimit, highLimit *bacnet.DeviceInstance) (WhoIsRequest, 
 
 func validateWhoIsRequest(req WhoIsRequest) error {
 	if (req.LowLimit == nil) != (req.HighLimit == nil) {
-		return bacnet.NewValidationError("who-is limits", req, ErrEncodeFailure)
+		return errors.NewValidationError("who-is limits", req, ErrEncodeFailure)
 	}
 
 	if req.LowLimit == nil {
@@ -177,29 +180,29 @@ func validateWhoIsRequest(req WhoIsRequest) error {
 	}
 
 	if !req.LowLimit.Valid() {
-		return bacnet.NewValidationError("low limit", *req.LowLimit, ErrEncodeFailure)
+		return errors.NewValidationError("low limit", *req.LowLimit, ErrEncodeFailure)
 	}
 
 	if !req.HighLimit.Valid() {
-		return bacnet.NewValidationError("high limit", *req.HighLimit, ErrEncodeFailure)
+		return errors.NewValidationError("high limit", *req.HighLimit, ErrEncodeFailure)
 	}
 
 	if *req.LowLimit > *req.HighLimit {
-		return bacnet.NewValidationError("who-is limits", req, ErrEncodeFailure)
+		return errors.NewValidationError("who-is limits", req, ErrEncodeFailure)
 	}
 
 	return nil
 }
 
-func (c *clientImpl) WhoIs(ctx context.Context, dst bacnet.Address, req WhoIsRequest) error {
+func (c *clientImpl) WhoIs(ctx context.Context, dst netprim.Address, req WhoIsRequest) error {
 	if err := validateWhoIsRequest(req); err != nil {
-		bacnet.Logger.Error("apdu who-is validate request", "error", err)
+		log.Logger.Error("apdu who-is validate request", "error", err)
 		return err
 	}
 
 	payload, err := encodeWhoIsPayload(req)
 	if err != nil {
-		bacnet.Logger.Error("apdu who-is encode payload", "error", err)
+		log.Logger.Error("apdu who-is encode payload", "error", err)
 		return err
 	}
 
@@ -215,12 +218,12 @@ func (c *clientImpl) WhoIs(ctx context.Context, dst bacnet.Address, req WhoIsReq
 
 func (c *clientImpl) InvokeConfirmedRaw(
 	ctx context.Context,
-	dst bacnet.Address,
+	dst netprim.Address,
 	serviceChoice ServiceChoice,
 	payload []byte,
 ) ([]byte, error) {
 	if !IsConfirmedServiceChoice(serviceChoice) {
-		return nil, bacnet.NewValidationError("service choice", serviceChoice, ErrInvalidServiceChoice)
+		return nil, errors.NewValidationError("service choice", serviceChoice, ErrInvalidServiceChoice)
 	}
 
 	confirm, err := c.ue.InvokeConfirmed(ctx, ConfirmedRequestICI{
@@ -235,7 +238,7 @@ func (c *clientImpl) InvokeConfirmedRaw(
 		},
 	})
 	if err != nil {
-		bacnet.Logger.Error("apdu invoke confirmed raw", "error", err)
+		log.Logger.Error("apdu invoke confirmed raw", "error", err)
 		return nil, classifyRemoteAPDUError(serviceChoice, err)
 	}
 
@@ -251,17 +254,17 @@ func (c *clientImpl) InvokeConfirmedRaw(
 // LowLimit and HighLimit must be both set or both nil.
 // Exactly one of ObjectIdentifier or ObjectName must be set.
 type WhoHasRequest struct {
-	LowLimit         *bacnet.DeviceInstance
-	HighLimit        *bacnet.DeviceInstance
-	ObjectIdentifier *bacnet.ObjectIdentifier
+	LowLimit         *types.DeviceInstance
+	HighLimit        *types.DeviceInstance
+	ObjectIdentifier *types.ObjectIdentifier
 	ObjectName       *string
 }
 
 // NewWhoHasByObjectIdentifier constructs a validated WhoHasRequest that
 // searches by object identifier.
 func NewWhoHasByObjectIdentifier(
-	lowLimit, highLimit *bacnet.DeviceInstance,
-	objectIdentifier bacnet.ObjectIdentifier,
+	lowLimit, highLimit *types.DeviceInstance,
+	objectIdentifier types.ObjectIdentifier,
 ) (WhoHasRequest, error) {
 	req := WhoHasRequest{
 		LowLimit:         lowLimit,
@@ -279,7 +282,7 @@ func NewWhoHasByObjectIdentifier(
 // NewWhoHasByObjectName constructs a validated WhoHasRequest that searches by
 // object name.
 func NewWhoHasByObjectName(
-	lowLimit, highLimit *bacnet.DeviceInstance,
+	lowLimit, highLimit *types.DeviceInstance,
 	objectName string,
 ) (WhoHasRequest, error) {
 	req := WhoHasRequest{
@@ -300,55 +303,55 @@ func NewWhoHasByObjectName(
 
 func validateWhoHasRequest(req WhoHasRequest) error {
 	if (req.LowLimit == nil) != (req.HighLimit == nil) {
-		return bacnet.NewValidationError("who-has limits", req, ErrEncodeFailure)
+		return errors.NewValidationError("who-has limits", req, ErrEncodeFailure)
 	}
 
 	if req.LowLimit != nil {
 		if !req.LowLimit.Valid() {
-			return bacnet.NewValidationError("low limit", *req.LowLimit, ErrEncodeFailure)
+			return errors.NewValidationError("low limit", *req.LowLimit, ErrEncodeFailure)
 		}
 
 		if !req.HighLimit.Valid() {
-			return bacnet.NewValidationError("high limit", *req.HighLimit, ErrEncodeFailure)
+			return errors.NewValidationError("high limit", *req.HighLimit, ErrEncodeFailure)
 		}
 
 		if *req.LowLimit > *req.HighLimit {
-			return bacnet.NewValidationError("who-has limits", req, ErrEncodeFailure)
+			return errors.NewValidationError("who-has limits", req, ErrEncodeFailure)
 		}
 	}
 
 	hasObjectID := req.ObjectIdentifier != nil
 	hasObjectName := req.ObjectName != nil
 	if hasObjectID == hasObjectName {
-		return bacnet.NewValidationError("object specifier", req, ErrEncodeFailure)
+		return errors.NewValidationError("object specifier", req, ErrEncodeFailure)
 	}
 
 	if hasObjectID && !req.ObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("object identifier", *req.ObjectIdentifier, ErrEncodeFailure)
+		return errors.NewValidationError("object identifier", *req.ObjectIdentifier, ErrEncodeFailure)
 	}
 
 	if hasObjectName {
 		if len(*req.ObjectName) == 0 {
-			return bacnet.NewValidationError("object name", *req.ObjectName, ErrEncodeFailure)
+			return errors.NewValidationError("object name", *req.ObjectName, ErrEncodeFailure)
 		}
 
 		if !bacencoding.IsASCIIString(*req.ObjectName) {
-			return bacnet.NewValidationError("object name", *req.ObjectName, ErrEncodeFailure)
+			return errors.NewValidationError("object name", *req.ObjectName, ErrEncodeFailure)
 		}
 	}
 
 	return nil
 }
 
-func (c *clientImpl) WhoHas(ctx context.Context, dst bacnet.Address, req WhoHasRequest) error {
+func (c *clientImpl) WhoHas(ctx context.Context, dst netprim.Address, req WhoHasRequest) error {
 	if err := validateWhoHasRequest(req); err != nil {
-		bacnet.Logger.Error("apdu who-has validate request", "error", err)
+		log.Logger.Error("apdu who-has validate request", "error", err)
 		return err
 	}
 
 	payload, err := encodeWhoHasPayload(req)
 	if err != nil {
-		bacnet.Logger.Error("apdu who-has encode payload", "error", err)
+		log.Logger.Error("apdu who-has encode payload", "error", err)
 		return err
 	}
 
@@ -401,13 +404,13 @@ func encodeWhoIsPayload(req WhoIsRequest) ([]byte, error) {
 
 // ReadPropertyRequest models the confirmed ReadProperty service parameters.
 type ReadPropertyRequest struct {
-	ObjectIdentifier   bacnet.ObjectIdentifier
-	PropertyIdentifier bacnet.PropertyIdentifier
+	ObjectIdentifier   types.ObjectIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 }
 
 // NewReadPropertyRequest constructs a validated ReadPropertyRequest.
-func NewReadPropertyRequest(objectIdentifier bacnet.ObjectIdentifier, propertyIdentifier bacnet.PropertyIdentifier, arrayIndex *uint32) (ReadPropertyRequest, error) {
+func NewReadPropertyRequest(objectIdentifier types.ObjectIdentifier, propertyIdentifier types.PropertyIdentifier, arrayIndex *uint32) (ReadPropertyRequest, error) {
 	res := ReadPropertyRequest{
 		ObjectIdentifier:   objectIdentifier,
 		PropertyIdentifier: propertyIdentifier,
@@ -421,20 +424,20 @@ func NewReadPropertyRequest(objectIdentifier bacnet.ObjectIdentifier, propertyId
 
 func validateReadPropertyRequest(req ReadPropertyRequest) error {
 	if !req.ObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
+		return errors.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
 	}
 	return nil
 }
 
 // ReadPropertyACK models the decoded ReadProperty-ACK payload.
 type ReadPropertyACK struct {
-	ObjectIdentifier   bacnet.ObjectIdentifier
-	PropertyIdentifier bacnet.PropertyIdentifier
+	ObjectIdentifier   types.ObjectIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	PropertyValue      []byte
 }
 
-func (c *clientImpl) ReadProperty(ctx context.Context, dst bacnet.Address, req ReadPropertyRequest) (ReadPropertyACK, error) {
+func (c *clientImpl) ReadProperty(ctx context.Context, dst netprim.Address, req ReadPropertyRequest) (ReadPropertyACK, error) {
 	if err := validateReadPropertyRequest(req); err != nil {
 		return ReadPropertyACK{}, err
 	}
@@ -450,8 +453,8 @@ func (c *clientImpl) ReadProperty(ctx context.Context, dst bacnet.Address, req R
 
 // IAmIndication is the typed payload of an inbound unconfirmed I-Am service.
 type IAmIndication struct {
-	Source                bacnet.Address
-	DeviceIdentifier      bacnet.ObjectIdentifier
+	Source                netprim.Address
+	DeviceIdentifier      types.ObjectIdentifier
 	MaxAPDULengthAccepted MaxApduLengthAccepted
 	SegmentationSupported SegmentationSupport
 	VendorID              uint16
@@ -462,7 +465,7 @@ type IAmHandler func(ctx context.Context, indication IAmIndication) error
 
 func (c *clientImpl) RegisterIAmHandler(handler IAmHandler) error {
 	if c.iam == nil {
-		return bacnet.NewValidationError("i-am dispatcher", nil, ErrInvalidASEConfig)
+		return errors.NewValidationError("i-am dispatcher", nil, ErrInvalidASEConfig)
 	}
 
 	return c.iam.RegisterHandler(handler)
@@ -470,9 +473,9 @@ func (c *clientImpl) RegisterIAmHandler(handler IAmHandler) error {
 
 // IHaveIndication is the typed payload of an inbound unconfirmed I-Have service.
 type IHaveIndication struct {
-	Source           bacnet.Address
-	DeviceIdentifier bacnet.ObjectIdentifier
-	ObjectIdentifier bacnet.ObjectIdentifier
+	Source           netprim.Address
+	DeviceIdentifier types.ObjectIdentifier
+	ObjectIdentifier types.ObjectIdentifier
 	ObjectName       string
 }
 
@@ -481,7 +484,7 @@ type IHaveHandler func(ctx context.Context, indication IHaveIndication) error
 
 func (c *clientImpl) HandleIHave(handler IHaveHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	return c.ue.HandleUnconfirmed(ServiceChoiceIHave, func(ctx context.Context, indication UnconfirmedIndicationICI) error {
@@ -509,8 +512,8 @@ func decodeIHavePayload(payload []byte) (IHaveIndication, error) {
 	if len(devObjBytes) != 4 {
 		return IHaveIndication{}, fmt.Errorf("%w: invalid i-have device-identifier length %d", ErrDecodeFailure, len(devObjBytes))
 	}
-	out.DeviceIdentifier = bacnet.ObjectIdentifier(binary.BigEndian.Uint32(devObjBytes))
-	if out.DeviceIdentifier.ObjectType() != bacnet.ObjectTypeDevice {
+	out.DeviceIdentifier = types.ObjectIdentifier(binary.BigEndian.Uint32(devObjBytes))
+	if out.DeviceIdentifier.ObjectType() != types.ObjectTypeDevice {
 		return IHaveIndication{}, fmt.Errorf("%w: i-have device-identifier must be device", ErrDecodeFailure)
 	}
 
@@ -521,7 +524,7 @@ func decodeIHavePayload(payload []byte) (IHaveIndication, error) {
 	if len(objBytes) != 4 {
 		return IHaveIndication{}, fmt.Errorf("%w: invalid i-have object-identifier length %d", ErrDecodeFailure, len(objBytes))
 	}
-	out.ObjectIdentifier = bacnet.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
+	out.ObjectIdentifier = types.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
 	if !out.ObjectIdentifier.ObjectType().Valid() {
 		return IHaveIndication{}, fmt.Errorf("%w: invalid i-have object-identifier", ErrDecodeFailure)
 	}
@@ -553,8 +556,8 @@ func decodeIAmPayload(payload []byte) (IAmIndication, error) {
 	if len(objBytes) != 4 {
 		return IAmIndication{}, fmt.Errorf("%w: invalid i-am object-identifier length %d", ErrDecodeFailure, len(objBytes))
 	}
-	out.DeviceIdentifier = bacnet.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
-	if out.DeviceIdentifier.ObjectType() != bacnet.ObjectTypeDevice {
+	out.DeviceIdentifier = types.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
+	if out.DeviceIdentifier.ObjectType() != types.ObjectTypeDevice {
 		return IAmIndication{}, fmt.Errorf("%w: i-am object-identifier must be device", ErrDecodeFailure)
 	}
 
@@ -628,7 +631,7 @@ func decodeReadPropertyACKPayload(payload []byte) (ReadPropertyACK, error) {
 	if len(objValue) != 4 {
 		return ReadPropertyACK{}, fmt.Errorf("%w: invalid object-identifier length %d", ErrDecodeFailure, len(objValue))
 	}
-	objID := bacnet.ObjectIdentifier(binary.BigEndian.Uint32(objValue))
+	objID := types.ObjectIdentifier(binary.BigEndian.Uint32(objValue))
 	if !objID.ObjectType().Valid() {
 		return ReadPropertyACK{}, fmt.Errorf("%w: invalid object-identifier %d", ErrDecodeFailure, objID)
 	}
@@ -647,7 +650,7 @@ func decodeReadPropertyACKPayload(payload []byte) (ReadPropertyACK, error) {
 
 	res := ReadPropertyACK{
 		ObjectIdentifier:   objID,
-		PropertyIdentifier: bacnet.PropertyIdentifier(propID),
+		PropertyIdentifier: types.PropertyIdentifier(propID),
 	}
 
 	if cursor >= len(payload) {

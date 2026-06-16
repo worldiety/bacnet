@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net/netip"
 
-	"go.wdy.de/bacnet"
 	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -41,27 +42,27 @@ func NewStack(transport *Transport) (*Stack, error) {
 // It encodes packet to wire bytes, wraps them in an Original-Unicast-NPDU BVLC
 // frame, and sends the datagram to the UDP address derived from dst via
 // AddressToAddrPort. dst must be a local-network BACnet/IP address (6-byte MAC).
-func (s *Stack) SendNPDU(_ context.Context, dst bacnet.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
+func (s *Stack) SendNPDU(_ context.Context, dst netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
 	npduBytes, err := packet.Encode()
 	if err != nil {
-		bacnet.Logger.Error("bip stack encode npdu", "error", err, "dst_network", dst.Network)
+		log.Logger.Error("bip stack encode npdu", "error", err, "dst_network", dst.Network)
 		return fmt.Errorf("%w: encode npdu: %v", ErrWriteFailure, err)
 	}
 
 	udpDst, err := AddressToAddrPort(dst)
 	if err != nil {
-		bacnet.Logger.Error("bip stack resolve destination", "error", err, "dst_network", dst.Network)
+		log.Logger.Error("bip stack resolve destination", "error", err, "dst_network", dst.Network)
 		return fmt.Errorf("%w: resolve destination: %v", ErrUnsupportedAddress, err)
 	}
 
 	frame, err := NewFrameWithType(BVLCTypeBACnetIP, FunctionOriginalUnicastNPDU, npduBytes)
 	if err != nil {
-		bacnet.Logger.Error("bip stack build unicast frame", "error", err, "dst", udpDst)
+		log.Logger.Error("bip stack build unicast frame", "error", err, "dst", udpDst)
 		return fmt.Errorf("%w: build original-unicast-npdu frame: %v", ErrWriteFailure, err)
 	}
 
 	if err := s.transport.SendFrame(udpDst, frame); err != nil {
-		bacnet.Logger.Error("bip stack send frame", "error", err, "dst", udpDst)
+		log.Logger.Error("bip stack send frame", "error", err, "dst", udpDst)
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
@@ -96,7 +97,7 @@ func (s *Stack) Run(ctx context.Context, ase apdu.ASE) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			bacnet.Logger.Error("bip stack receive frame", "error", err)
+			log.Logger.Error("bip stack receive frame", "error", err)
 			return fmt.Errorf("%w: %v", ErrReadFailure, err)
 		}
 
@@ -116,7 +117,7 @@ func (s *Stack) Run(ctx context.Context, ase apdu.ASE) error {
 // All other function types are silently ignored.
 func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, senderAddr netip.AddrPort) error {
 	var npduBytes []byte
-	var src bacnet.Address
+	var src netprim.Address
 
 	payload := frame.PayloadBytes()
 
@@ -124,7 +125,7 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 	case FunctionOriginalUnicastNPDU, FunctionOriginalBroadcastNPDU:
 		addr, err := AddrPortToAddress(senderAddr)
 		if err != nil {
-			bacnet.Logger.Error("bip stack decode sender address", "error", err, "sender", senderAddr)
+			log.Logger.Error("bip stack decode sender address", "error", err, "sender", senderAddr)
 			return err
 		}
 		src = addr
@@ -133,17 +134,17 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 	case FunctionForwardedNPDU:
 		// The first 6 bytes of the payload are the originating device's B/IP address.
 		if len(payload) <= 6 {
-			bacnet.Logger.Error("bip stack forwarded payload too short", "error", ErrReadFailure, "bytes", len(payload))
+			log.Logger.Error("bip stack forwarded payload too short", "error", ErrReadFailure, "bytes", len(payload))
 			return fmt.Errorf("forwarded-npdu payload too short: %d bytes", len(payload))
 		}
 		originAddr, err := decodeAddressPortIpV4(payload[:6])
 		if err != nil {
-			bacnet.Logger.Error("bip stack decode forwarded origin", "error", err)
+			log.Logger.Error("bip stack decode forwarded origin", "error", err)
 			return fmt.Errorf("decode forwarded-npdu origin address: %w", err)
 		}
 		addr, err := AddrPortToAddress(originAddr)
 		if err != nil {
-			bacnet.Logger.Error("bip stack convert forwarded origin", "error", err, "origin", originAddr)
+			log.Logger.Error("bip stack convert forwarded origin", "error", err, "origin", originAddr)
 			return err
 		}
 		src = addr
@@ -157,7 +158,7 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 
 	var pkt npdu.NetworkLayerProtocolDataUnit
 	if err := pkt.Decode(npduBytes); err != nil {
-		bacnet.Logger.Error("bip stack decode npdu", "error", err, "bytes", len(npduBytes))
+		log.Logger.Error("bip stack decode npdu", "error", err, "bytes", len(npduBytes))
 		return fmt.Errorf("decode npdu: %w", err)
 	}
 

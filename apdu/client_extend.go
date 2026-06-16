@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
 	bacencoding "go.wdy.de/bacnet/encoding"
 )
 
@@ -48,20 +49,20 @@ func NewDeviceCommunicationControlRequest(
 
 func validateDeviceCommunicationControlRequest(req DeviceCommunicationControlRequest) error {
 	if req.EnableDisable > DeviceCommunicationControlDisableInitiation {
-		return bacnet.NewValidationError("enable disable", req.EnableDisable, ErrEncodeFailure)
+		return errors.NewValidationError("enable disable", req.EnableDisable, ErrEncodeFailure)
 	}
 	if req.Password != nil {
 		if len(*req.Password) == 0 {
-			return bacnet.NewValidationError("password", *req.Password, ErrEncodeFailure)
+			return errors.NewValidationError("password", *req.Password, ErrEncodeFailure)
 		}
 		if !bacencoding.IsASCIIString(*req.Password) {
-			return bacnet.NewValidationError("password", *req.Password, ErrEncodeFailure)
+			return errors.NewValidationError("password", *req.Password, ErrEncodeFailure)
 		}
 	}
 	return nil
 }
 
-func (c *clientImpl) DeviceCommunicationControl(ctx context.Context, dst bacnet.Address, req DeviceCommunicationControlRequest) error {
+func (c *clientImpl) DeviceCommunicationControl(ctx context.Context, dst netprim.Address, req DeviceCommunicationControlRequest) error {
 	if err := validateDeviceCommunicationControlRequest(req); err != nil {
 		return err
 	}
@@ -132,20 +133,20 @@ func NewReinitializeDeviceRequest(state ReinitializeDeviceState, password *strin
 
 func validateReinitializeDeviceRequest(req ReinitializeDeviceRequest) error {
 	if req.State > ReinitializeDeviceStateAbortRestore {
-		return bacnet.NewValidationError("state", req.State, ErrEncodeFailure)
+		return errors.NewValidationError("state", req.State, ErrEncodeFailure)
 	}
 	if req.Password != nil {
 		if len(*req.Password) == 0 {
-			return bacnet.NewValidationError("password", *req.Password, ErrEncodeFailure)
+			return errors.NewValidationError("password", *req.Password, ErrEncodeFailure)
 		}
 		if !bacencoding.IsASCIIString(*req.Password) {
-			return bacnet.NewValidationError("password", *req.Password, ErrEncodeFailure)
+			return errors.NewValidationError("password", *req.Password, ErrEncodeFailure)
 		}
 	}
 	return nil
 }
 
-func (c *clientImpl) ReinitializeDevice(ctx context.Context, dst bacnet.Address, req ReinitializeDeviceRequest) error {
+func (c *clientImpl) ReinitializeDevice(ctx context.Context, dst netprim.Address, req ReinitializeDeviceRequest) error {
 	if err := validateReinitializeDeviceRequest(req); err != nil {
 		return err
 	}

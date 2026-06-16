@@ -1,10 +1,12 @@
 package npdu
 
-import "go.wdy.de/bacnet"
+import (
+	"go.wdy.de/bacnet/common/log"
+)
 
 func decodeAndNormalizeNetworkLayerMessagePayload(header NetworkLayerMessageHeader, payload []byte) ([]byte, error) {
 
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"npdu normalize network-layer payload inbound",
 		"message_type", uint8(header.MessageType),
 		"has_vendor_id", header.VendorID != nil,
@@ -17,7 +19,7 @@ func decodeAndNormalizeNetworkLayerMessagePayload(header NetworkLayerMessageHead
 	}
 
 	normalizedPayload := message.PayloadBytes()
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"npdu normalize network-layer payload success",
 		"message_type", uint8(message.Header().MessageType),
 		"payload_bytes", len(normalizedPayload),

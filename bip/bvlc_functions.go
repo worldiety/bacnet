@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
 )
 
 type BVLCResultCode uint16
@@ -90,7 +90,7 @@ func (r *BVLCResult) Decode(data []byte) error {
 	const resultFrameLen = BVLCHeaderLen + 2
 
 	if len(data) != resultFrameLen {
-		return bacnet.NewValidationError("data", len(data), ErrInvalidLength)
+		return errors.NewValidationError("data", len(data), ErrInvalidLength)
 	}
 
 	var header BVLCHeader
@@ -132,7 +132,7 @@ func (r *BVLCResult) ResultCode() BVLCResultCode {
 // resultCode must be one of the defined BVLCResultCode constants.
 func NewBVLCResult(resultCode BVLCResultCode) (*BVLCResult, error) {
 	if !resultCode.Valid() {
-		return nil, bacnet.NewValidationError("result code", resultCode, ErrInvalidResultCode)
+		return nil, errors.NewValidationError("result code", resultCode, ErrInvalidResultCode)
 	}
 	const resultFrameLen = BVLCHeaderLen + 2
 	return &BVLCResult{
@@ -230,11 +230,11 @@ func (f *FdtEntry) RegisteredTtl() TTL {
 // address must be a valid IPv4 address-port pair.
 func NewFdtEntry(address netip.AddrPort, ttl TTL) (*FdtEntry, error) {
 	if !address.Addr().Is4() || !address.IsValid() {
-		return nil, bacnet.NewValidationError("address", address, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("address", address, ErrInvalidIPAddress)
 	}
 
 	if ttl == 0 {
-		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
+		return nil, errors.NewValidationError("ttl", ttl, ErrInvalidTTL)
 	}
 
 	remainingTtl := min(int(ttl)+30, math.MaxUint16)
@@ -336,7 +336,7 @@ const (
 // broadcastDistributionMask must be exactly 4 bytes.
 func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (*BdtEntry, error) {
 	if broadcastDistributionMask == nil || len(broadcastDistributionMask) != net.IPv4len {
-		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+		return nil, errors.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
 	}
 
 	entry := BdtEntry{
@@ -345,7 +345,7 @@ func NewBdtEntry(address netip.AddrPort, broadcastDistributionMask net.IPMask) (
 	}
 
 	if !entry.Valid() {
-		return nil, bacnet.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
+		return nil, errors.NewValidationError("broadcast distribution mask", broadcastDistributionMask, ErrInvalidMask)
 	}
 
 	return &entry, nil
@@ -554,12 +554,12 @@ func (w *WriteBroadcastDistributionTable) Entries() []BdtEntry {
 // for BACnet/IP (IPv4). entries must contain at least one valid BdtEntry.
 func NewWriteBroadcastDistributionTable(entries []BdtEntry) (*WriteBroadcastDistributionTable, error) {
 	if len(entries) == 0 {
-		return nil, bacnet.NewValidationError("entries", len(entries), ErrInvalidLength)
+		return nil, errors.NewValidationError("entries", len(entries), ErrInvalidLength)
 	}
 
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
 		}
 	}
 
@@ -726,7 +726,7 @@ func NewReadBroadcastDistributionTableAck(entries []BdtEntry) (*ReadBroadcastDis
 	}
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
 		}
 	}
 	entriesCopy := make(BdtEntryList, len(entries))
@@ -827,16 +827,16 @@ func (f *ForwardedNpdu) NPDUBytes() []byte {
 // npdu must be non-empty.
 func NewForwardedNpdu(originAddr netip.AddrPort, npdu []byte) (*ForwardedNpdu, error) {
 	if !originAddr.Addr().Is4() || !originAddr.IsValid() {
-		return nil, bacnet.NewValidationError("origin address", originAddr, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("origin address", originAddr, ErrInvalidIPAddress)
 	}
 
 	if len(npdu) == 0 {
-		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+		return nil, errors.NewValidationError("npdu", len(npdu), ErrInvalidLength)
 	}
 
 	totalLen := BVLCHeaderLen + 6 + len(npdu)
 	if totalLen > 0xFFFF {
-		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+		return nil, errors.NewValidationError("length", totalLen, ErrInvalidLength)
 	}
 
 	return &ForwardedNpdu{
@@ -950,7 +950,7 @@ func (r *RegisterForeignDevice) TTL() TTL {
 // ttl must be non-zero.
 func NewRegisterForeignDevice(ttl TTL) (*RegisterForeignDevice, error) {
 	if ttl == 0 {
-		return nil, bacnet.NewValidationError("ttl", ttl, ErrInvalidTTL)
+		return nil, errors.NewValidationError("ttl", ttl, ErrInvalidTTL)
 	}
 
 	const frameLen = BVLCHeaderLen + 2
@@ -1106,7 +1106,7 @@ func NewReadForeignDeviceTableAck(entries []FdtEntry) (*ReadForeignDeviceTableAc
 	}
 	for i, e := range entries {
 		if !e.Valid() {
-			return nil, bacnet.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("entries[%d]", i), e, ErrInvalidIPAddress)
 		}
 	}
 	entriesCopy := make(FdtEntryList, len(entries))
@@ -1203,7 +1203,7 @@ func (d *DeleteForeignDeviceTableEntry) FdtEntry() FdtEntry {
 // for BACnet/IP (IPv4). entry must be valid.
 func NewDeleteForeignDeviceTableEntry(entry FdtEntry) (*DeleteForeignDeviceTableEntry, error) {
 	if !entry.Valid() {
-		return nil, bacnet.NewValidationError("entry", entry, ErrInvalidIPAddress)
+		return nil, errors.NewValidationError("entry", entry, ErrInvalidIPAddress)
 	}
 	const frameLen = BVLCHeaderLen + entryDataLen
 	return &DeleteForeignDeviceTableEntry{
@@ -1288,14 +1288,14 @@ func (d *DistributeBroadcastToNetwork) NPDUBytes() []byte {
 // npdu must be non-empty.
 func NewDistributeBroadcastToNetwork(frameType BVLCType, npdu []byte) (*DistributeBroadcastToNetwork, error) {
 	if !frameType.Valid() {
-		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+		return nil, errors.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
 	}
 	if len(npdu) == 0 {
-		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+		return nil, errors.NewValidationError("npdu", len(npdu), ErrInvalidLength)
 	}
 	totalLen := BVLCHeaderLen + len(npdu)
 	if totalLen > 0xFFFF {
-		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+		return nil, errors.NewValidationError("length", totalLen, ErrInvalidLength)
 	}
 	return &DistributeBroadcastToNetwork{
 		header: BVLCHeader{
@@ -1319,14 +1319,14 @@ type OriginalUnicastNpdu struct {
 // npdu must be non-empty.
 func NewOriginalUnicastNpdu(frameType BVLCType, npdu []byte) (*OriginalUnicastNpdu, error) {
 	if !frameType.Valid() {
-		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+		return nil, errors.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
 	}
 	if len(npdu) == 0 {
-		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+		return nil, errors.NewValidationError("npdu", len(npdu), ErrInvalidLength)
 	}
 	totalLen := BVLCHeaderLen + len(npdu)
 	if totalLen > 0xFFFF {
-		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+		return nil, errors.NewValidationError("length", totalLen, ErrInvalidLength)
 	}
 	l, err := NewBVLCLength(totalLen)
 	if err != nil {
@@ -1418,14 +1418,14 @@ type OriginalBroadcastNpdu struct {
 
 func NewOriginalBroadcastNpdu(frameType BVLCType, npdu []byte) (*OriginalBroadcastNpdu, error) {
 	if !frameType.Valid() {
-		return nil, bacnet.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
+		return nil, errors.NewValidationError("frame type", frameType, ErrInvalidBVLCType)
 	}
 	if len(npdu) == 0 {
-		return nil, bacnet.NewValidationError("npdu", len(npdu), ErrInvalidLength)
+		return nil, errors.NewValidationError("npdu", len(npdu), ErrInvalidLength)
 	}
 	totalLen := BVLCHeaderLen + len(npdu)
 	if totalLen > 0xFFFF {
-		return nil, bacnet.NewValidationError("length", totalLen, ErrInvalidLength)
+		return nil, errors.NewValidationError("length", totalLen, ErrInvalidLength)
 	}
 	l, err := NewBVLCLength(totalLen)
 	if err != nil {

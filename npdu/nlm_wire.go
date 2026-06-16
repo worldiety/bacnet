@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
 )
 
 const minProprietaryNetworkLayerMessageWireLen = 3
@@ -14,15 +15,15 @@ const minProprietaryNetworkLayerMessageWireLen = 3
 // MessageType, optional VendorID for proprietary types, then payload bytes.
 func EncodeNetworkLayerMessageWire(message NetworkLayerMessageModel) ([]byte, error) {
 	if message == nil {
-		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, bacnet.NewValidationError("message", nil, ErrInvalidMessage))
+		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, errors.NewValidationError("message", nil, ErrInvalidMessage))
 	}
 	if !message.Valid() {
-		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, bacnet.NewValidationError("message", message, ErrInvalidMessage))
+		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, errors.NewValidationError("message", message, ErrInvalidMessage))
 	}
 
 	header := message.Header()
 	if !header.structureValid() {
-		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, bacnet.NewValidationError("network layer message header", header, ErrInvalidMessage))
+		return nil, fmt.Errorf("%w: %v", ErrEncodeFailure, errors.NewValidationError("network layer message header", header, ErrInvalidMessage))
 	}
 
 	payload := message.PayloadBytes()
@@ -45,7 +46,7 @@ func EncodeNetworkLayerMessageWire(message NetworkLayerMessageModel) ([]byte, er
 // DecodeNetworkLayerMessageWire decodes one BACnet network-layer message from
 // MessageType, optional VendorID, and payload bytes.
 func DecodeNetworkLayerMessageWire(raw []byte) (NetworkLayerMessageModel, error) {
-	bacnet.Logger.Debug("npdu decode network-layer message wire inbound", "bytes", len(raw))
+	log.Logger.Debug("npdu decode network-layer message wire inbound", "bytes", len(raw))
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: raw network-layer message too short", ErrDecodeFailure)
 	}
@@ -65,7 +66,7 @@ func DecodeNetworkLayerMessageWire(raw []byte) (NetworkLayerMessageModel, error)
 		return nil, fmt.Errorf("%w: %v", ErrDecodeFailure, err)
 	}
 
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"npdu decode network-layer message wire success",
 		"message_type", uint8(header.MessageType),
 		"has_vendor_id", header.VendorID != nil,

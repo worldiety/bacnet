@@ -7,7 +7,9 @@ import (
 	"math"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	bacencoding "go.wdy.de/bacnet/encoding"
 )
 
@@ -29,14 +31,14 @@ type COVIncrement float32
 
 // MonitoredPropertyReference identifies one monitored property and optional array index.
 type MonitoredPropertyReference struct {
-	PropertyIdentifier bacnet.PropertyIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 }
 
 // SubscribeCOVRequest is the typed request payload for SubscribeCOV.
 type SubscribeCOVRequest struct {
 	SubscriberProcessIdentifier SubscriberProcessIdentifier
-	MonitoredObjectIdentifier   bacnet.ObjectIdentifier
+	MonitoredObjectIdentifier   types.ObjectIdentifier
 	IssueConfirmedNotifications *bool
 	Lifetime                    *COVLifetime
 }
@@ -44,7 +46,7 @@ type SubscribeCOVRequest struct {
 // NewSubscribeCOVRequest constructs a validated SubscribeCOVRequest.
 func NewSubscribeCOVRequest(
 	subscriberProcessIdentifier SubscriberProcessIdentifier,
-	monitoredObjectIdentifier bacnet.ObjectIdentifier,
+	monitoredObjectIdentifier types.ObjectIdentifier,
 	issueConfirmedNotifications *bool,
 	lifetime *COVLifetime,
 ) (SubscribeCOVRequest, error) {
@@ -62,12 +64,12 @@ func NewSubscribeCOVRequest(
 
 func validateSubscribeCOVRequest(req SubscribeCOVRequest) error {
 	if !req.MonitoredObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("monitored object identifier", req.MonitoredObjectIdentifier, ErrEncodeFailure)
+		return errors.NewValidationError("monitored object identifier", req.MonitoredObjectIdentifier, ErrEncodeFailure)
 	}
 	return nil
 }
 
-func (c *clientImpl) SubscribeCOV(ctx context.Context, dst bacnet.Address, req SubscribeCOVRequest) error {
+func (c *clientImpl) SubscribeCOV(ctx context.Context, dst netprim.Address, req SubscribeCOVRequest) error {
 	if err := validateSubscribeCOVRequest(req); err != nil {
 		return err
 	}
@@ -90,7 +92,7 @@ func (c *clientImpl) SubscribeCOV(ctx context.Context, dst bacnet.Address, req S
 // SubscribeCOVPropertyRequest is the typed request payload for SubscribeCOVProperty.
 type SubscribeCOVPropertyRequest struct {
 	SubscriberProcessIdentifier SubscriberProcessIdentifier
-	MonitoredObjectIdentifier   bacnet.ObjectIdentifier
+	MonitoredObjectIdentifier   types.ObjectIdentifier
 	IssueConfirmedNotifications *bool
 	Lifetime                    *COVLifetime
 	MonitoredProperty           MonitoredPropertyReference
@@ -100,7 +102,7 @@ type SubscribeCOVPropertyRequest struct {
 // NewSubscribeCOVPropertyRequest constructs a validated SubscribeCOVPropertyRequest.
 func NewSubscribeCOVPropertyRequest(
 	subscriberProcessIdentifier SubscriberProcessIdentifier,
-	monitoredObjectIdentifier bacnet.ObjectIdentifier,
+	monitoredObjectIdentifier types.ObjectIdentifier,
 	issueConfirmedNotifications *bool,
 	lifetime *COVLifetime,
 	monitoredProperty MonitoredPropertyReference,
@@ -122,17 +124,17 @@ func NewSubscribeCOVPropertyRequest(
 
 func validateSubscribeCOVPropertyRequest(req SubscribeCOVPropertyRequest) error {
 	if !req.MonitoredObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("monitored object identifier", req.MonitoredObjectIdentifier, ErrEncodeFailure)
+		return errors.NewValidationError("monitored object identifier", req.MonitoredObjectIdentifier, ErrEncodeFailure)
 	}
 	if req.COVIncrement != nil {
 		if math.IsNaN(float64(*req.COVIncrement)) || math.IsInf(float64(*req.COVIncrement), 0) {
-			return bacnet.NewValidationError("cov increment", *req.COVIncrement, ErrEncodeFailure)
+			return errors.NewValidationError("cov increment", *req.COVIncrement, ErrEncodeFailure)
 		}
 	}
 	return nil
 }
 
-func (c *clientImpl) SubscribeCOVProperty(ctx context.Context, dst bacnet.Address, req SubscribeCOVPropertyRequest) error {
+func (c *clientImpl) SubscribeCOVProperty(ctx context.Context, dst netprim.Address, req SubscribeCOVPropertyRequest) error {
 	if err := validateSubscribeCOVPropertyRequest(req); err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func (c *clientImpl) SubscribeCOVProperty(ctx context.Context, dst bacnet.Addres
 
 func (c *clientImpl) invokeConfirmedRawServiceChoice(
 	ctx context.Context,
-	dst bacnet.Address,
+	dst netprim.Address,
 	serviceChoice ServiceChoice,
 	payload []byte,
 ) ([]byte, error) {
@@ -215,7 +217,7 @@ func encodeSubscribeCOVPropertyRequestPayload(req SubscribeCOVPropertyRequest) (
 
 // COVPropertyValue carries one property value entry in a COV notification.
 type COVPropertyValue struct {
-	PropertyIdentifier bacnet.PropertyIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	Value              []byte
 	Priority           *uint8
@@ -223,10 +225,10 @@ type COVPropertyValue struct {
 
 // UnconfirmedCOVNotificationIndication is the typed payload of an inbound unconfirmed COV notification.
 type UnconfirmedCOVNotificationIndication struct {
-	Source                      bacnet.Address
+	Source                      netprim.Address
 	SubscriberProcessIdentifier SubscriberProcessIdentifier
-	InitiatingDeviceIdentifier  bacnet.ObjectIdentifier
-	MonitoredObjectIdentifier   bacnet.ObjectIdentifier
+	InitiatingDeviceIdentifier  types.ObjectIdentifier
+	MonitoredObjectIdentifier   types.ObjectIdentifier
 	TimeRemaining               COVLifetime
 	Values                      []COVPropertyValue
 }
@@ -236,7 +238,7 @@ type UnconfirmedCOVNotificationHandler func(ctx context.Context, indication Unco
 
 func (c *clientImpl) HandleUnconfirmedCOVNotification(handler UnconfirmedCOVNotificationHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	return c.ue.HandleUnconfirmed(ServiceChoiceUnconfirmedCOVNotification, func(ctx context.Context, indication UnconfirmedIndicationICI) error {
@@ -268,7 +270,7 @@ func decodeUnconfirmedCOVNotificationPayload(payload []byte) (UnconfirmedCOVNoti
 	if err != nil {
 		return out, err
 	}
-	if out.InitiatingDeviceIdentifier.ObjectType() != bacnet.ObjectTypeDevice {
+	if out.InitiatingDeviceIdentifier.ObjectType() != types.ObjectTypeDevice {
 		return out, fmt.Errorf("%w: initiating-device-identifier must be device", ErrDecodeFailure)
 	}
 
@@ -300,15 +302,15 @@ func decodeUnconfirmedCOVNotificationPayload(payload []byte) (UnconfirmedCOVNoti
 
 // COVNotificationMultipleObject groups property values by monitored object.
 type COVNotificationMultipleObject struct {
-	ObjectIdentifier bacnet.ObjectIdentifier
+	ObjectIdentifier types.ObjectIdentifier
 	Values           []COVPropertyValue
 }
 
 // UnconfirmedCOVNotificationMultipleIndication is the typed payload of an inbound unconfirmed multiple COV notification.
 type UnconfirmedCOVNotificationMultipleIndication struct {
-	Source                      bacnet.Address
+	Source                      netprim.Address
 	SubscriberProcessIdentifier SubscriberProcessIdentifier
-	InitiatingDeviceIdentifier  bacnet.ObjectIdentifier
+	InitiatingDeviceIdentifier  types.ObjectIdentifier
 	TimeRemaining               COVLifetime
 	Objects                     []COVNotificationMultipleObject
 }
@@ -318,7 +320,7 @@ type UnconfirmedCOVNotificationMultipleHandler func(ctx context.Context, indicat
 
 func (c *clientImpl) HandleUnconfirmedCOVNotificationMultiple(handler UnconfirmedCOVNotificationMultipleHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	return c.ue.HandleUnconfirmed(ServiceChoiceUnconfirmedCOVNotificationMultiple, func(ctx context.Context, indication UnconfirmedIndicationICI) error {
@@ -350,7 +352,7 @@ func decodeUnconfirmedCOVNotificationMultiplePayload(payload []byte) (Unconfirme
 	if err != nil {
 		return out, err
 	}
-	if out.InitiatingDeviceIdentifier.ObjectType() != bacnet.ObjectTypeDevice {
+	if out.InitiatingDeviceIdentifier.ObjectType() != types.ObjectTypeDevice {
 		return out, fmt.Errorf("%w: initiating-device-identifier must be device", ErrDecodeFailure)
 	}
 
@@ -444,7 +446,7 @@ func decodeCOVPropertyValue(payload []byte, offset int) (COVPropertyValue, int, 
 	if err != nil {
 		return out, offset, fmt.Errorf("%w: invalid property identifier: %v", ErrDecodeFailure, err)
 	}
-	out.PropertyIdentifier = bacnet.PropertyIdentifier(propID)
+	out.PropertyIdentifier = types.PropertyIdentifier(propID)
 	offset = next
 
 	if offset < len(payload) && bacencoding.LooksLikeContextPrimitiveTag(payload[offset], 1) {
@@ -487,7 +489,7 @@ func decodeCOVPropertyValue(payload []byte, offset int) (COVPropertyValue, int, 
 	return out, offset, nil
 }
 
-func decodeExpectedContextObjectIdentifier(payload []byte, offset int, expectedTag uint32) (bacnet.ObjectIdentifier, int, error) {
+func decodeExpectedContextObjectIdentifier(payload []byte, offset int, expectedTag uint32) (types.ObjectIdentifier, int, error) {
 	_, objBytes, next, err := decodeExpectedContextPrimitive(payload, offset, expectedTag)
 	if err != nil {
 		return 0, offset, err
@@ -495,7 +497,7 @@ func decodeExpectedContextObjectIdentifier(payload []byte, offset int, expectedT
 	if len(objBytes) != 4 {
 		return 0, offset, fmt.Errorf("%w: invalid object identifier length %d", ErrDecodeFailure, len(objBytes))
 	}
-	objID := bacnet.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
+	objID := types.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
 	if !objID.ObjectType().Valid() {
 		return 0, offset, fmt.Errorf("%w: invalid object identifier %d", ErrDecodeFailure, objID)
 	}

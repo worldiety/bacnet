@@ -7,7 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"go.wdy.de/bacnet"
+	errors2 "go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/internal/util"
 	"go.wdy.de/bacnet/npdu"
 )
@@ -19,7 +21,7 @@ func (systemClock) Now() time.Time {
 }
 
 type routeRecord struct {
-	network   bacnet.NetworkNumber
+	network   netprim.NetworkNumber
 	port      PortID
 	portInfo  []byte
 	kind      RouteKind
@@ -29,12 +31,12 @@ type routeRecord struct {
 
 type Router interface {
 	Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataUnit) (Decision, error)
-	AddConnectedRoute(port PortID, network bacnet.NetworkNumber, portInfo []byte) error
-	AddLearnedRoute(port PortID, network bacnet.NetworkNumber, ttl time.Duration) error
-	RemoveRoute(network bacnet.NetworkNumber)
-	RemoveRouteOnPort(network bacnet.NetworkNumber, port PortID)
-	Lookup(network bacnet.NetworkNumber) (*RouteEntry, bool)
-	LookupAll(network bacnet.NetworkNumber) []RouteEntry
+	AddConnectedRoute(port PortID, network netprim.NetworkNumber, portInfo []byte) error
+	AddLearnedRoute(port PortID, network netprim.NetworkNumber, ttl time.Duration) error
+	RemoveRoute(network netprim.NetworkNumber)
+	RemoveRouteOnPort(network netprim.NetworkNumber, port PortID)
+	Lookup(network netprim.NetworkNumber) (*RouteEntry, bool)
+	LookupAll(network netprim.NetworkNumber) []RouteEntry
 	Snapshot() []RouteEntry
 	RoutingTableEntries() ([]npdu.RoutingTablePortEntry, error)
 }
@@ -43,7 +45,7 @@ type Router interface {
 type routerImpl struct {
 	policy Policy
 	clock  Clock
-	routes map[bacnet.NetworkNumber]map[PortID]routeRecord
+	routes map[netprim.NetworkNumber]map[PortID]routeRecord
 }
 
 // NewRouter constructs a router with the provided configuration.
@@ -64,7 +66,7 @@ func NewRouter(cfg Config) (Router, error) {
 	return &routerImpl{
 		policy: policy,
 		clock:  clock,
-		routes: make(map[bacnet.NetworkNumber]map[PortID]routeRecord),
+		routes: make(map[netprim.NetworkNumber]map[PortID]routeRecord),
 	}, nil
 }
 
@@ -82,7 +84,7 @@ func cloneRouteRecord(rec routeRecord) routeRecord {
 
 // bestRouteLocked picks a deterministic best route for a destination network.
 // Preference order: connected > learned; then freshest learned route; tie-break by lowest port.
-func (r *routerImpl) bestRouteLocked(network bacnet.NetworkNumber) (routeRecord, bool) {
+func (r *routerImpl) bestRouteLocked(network netprim.NetworkNumber) (routeRecord, bool) {
 	r.pruneExpiredLocked()
 	ports, ok := r.routes[network]
 	if !ok || len(ports) == 0 {
@@ -128,17 +130,17 @@ func (r *routerImpl) bestRouteLocked(network bacnet.NetworkNumber) (routeRecord,
 	return cloneRouteRecord(best), true
 }
 
-func validateRoute(network bacnet.NetworkNumber, _ PortID, portInfo []byte) error {
+func validateRoute(network netprim.NetworkNumber, _ PortID, portInfo []byte) error {
 	if network.IsLocal() {
-		return bacnet.NewValidationError("network", network, ErrRouteToLocalNetwork)
+		return errors2.NewValidationError("network", network, ErrRouteToLocalNetwork)
 	}
 
 	if network.IsGlobalBroadcast() {
-		return bacnet.NewValidationError("network", network, ErrInvalidRoute)
+		return errors2.NewValidationError("network", network, ErrInvalidRoute)
 	}
 
 	if len(portInfo) > 255 {
-		return bacnet.NewValidationError("port info", len(portInfo), ErrInvalidRoute)
+		return errors2.NewValidationError("port info", len(portInfo), ErrInvalidRoute)
 	}
 
 	return nil
@@ -165,7 +167,7 @@ func (r *routerImpl) pruneExpiredLocked() {
 // portForNetwork returns the port that directly serves network, if any route is known.
 // It does not prune expired routes; callers should invoke pruneExpiredLocked first when
 // freshness matters.
-func (r *routerImpl) portForNetwork(network bacnet.NetworkNumber) (PortID, bool) {
+func (r *routerImpl) portForNetwork(network netprim.NetworkNumber) (PortID, bool) {
 	route, ok := r.bestRouteLocked(network)
 	if !ok {
 		return 0, false
@@ -201,10 +203,10 @@ func (r *routerImpl) sourcePortsForSNETLocked(pdu *npdu.NetworkLayerProtocolData
 // buildRejectResponse constructs a local (non-routed) Reject-Message-To-Network NPDU
 // that should be transmitted back on the ingress port. Returns nil if construction
 // fails (treated as a best-effort helper; the drop is already recorded in Decision).
-func buildRejectResponse(dnet bacnet.NetworkNumber, reason npdu.NlmRejectReason) *npdu.NetworkLayerProtocolDataUnit {
+func buildRejectResponse(dnet netprim.NetworkNumber, reason npdu.NlmRejectReason) *npdu.NetworkLayerProtocolDataUnit {
 	msg, err := npdu.NewRejectMessageToNetworkMessage(dnet, reason)
 	if err != nil {
-		bacnet.Logger.Warn(
+		log.Logger.Warn(
 			"npdu router reject response build skipped",
 			"error", err,
 			"dnet", dnet,
@@ -213,9 +215,9 @@ func buildRejectResponse(dnet bacnet.NetworkNumber, reason npdu.NlmRejectReason)
 
 		return nil
 	}
-	reject, err := npdu.NewNetworkLayerNPDUFromMessage(npdu.NPCI{Priority: bacnet.NetworkPriorityNormal}, msg)
+	reject, err := npdu.NewNetworkLayerNPDUFromMessage(npdu.NPCI{Priority: netprim.NetworkPriorityNormal}, msg)
 	if err != nil {
-		bacnet.Logger.Warn(
+		log.Logger.Warn(
 			"npdu router reject response npdu build skipped",
 			"error", err,
 			"dnet", dnet,
@@ -254,10 +256,10 @@ func buildRejectResponse(dnet bacnet.NetworkNumber, reason npdu.NlmRejectReason)
 // Network-layer messages are always delivered locally in addition to any forwarding action.
 func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataUnit) (Decision, error) {
 	if pdu == nil || !pdu.Valid() {
-		return Decision{}, bacnet.NewValidationError("npdu", pdu, ErrInvalidNPDU)
+		return Decision{}, errors2.NewValidationError("npdu", pdu, ErrInvalidNPDU)
 	}
 
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"npdu router evaluate inbound",
 		"in_port", inPort,
 		"has_destination", pdu.HasDestinationSpecifier(),
@@ -273,7 +275,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	if !pdu.HasDestinationSpecifier() {
 		decision.DeliverLocally = true
 
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 
 		return decision, nil
 	}
@@ -284,11 +286,11 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	sourcePorts := r.sourcePortsForSNETLocked(pdu)
 
 	// Update table entry for this pdu and ingress port.
-	var src bacnet.NetworkNumber
+	var src netprim.NetworkNumber
 	if snet := pdu.SNET(); snet != nil {
 		src = snet.ToBacnetNetworkNumber()
 	} else {
-		src = bacnet.LocalNetwork
+		src = netprim.LocalNetwork
 	}
 
 	err := r.AddLearnedRoute(inPort, src, time.Minute)
@@ -297,15 +299,15 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	}
 
 	if pdu.DNET() == nil {
-		return Decision{}, bacnet.NewValidationError("dnet", pdu, ErrInvalidNPDU)
+		return Decision{}, errors2.NewValidationError("dnet", pdu, ErrInvalidNPDU)
 	}
 
-	dnet := bacnet.NetworkNumber(*pdu.DNET())
+	dnet := netprim.NetworkNumber(*pdu.DNET())
 
 	if dnet.IsGlobalBroadcast() {
 		decision.DeliverLocally = true
 		if !r.policy.ForwardGlobalBroadcast {
-			bacnet.Logger.Debug(decision.String())
+			log.Logger.Debug(decision.String())
 			return decision, nil
 		}
 
@@ -313,7 +315,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 		// for broadcasts because there is no single addressable originator.
 		if r.policy.Busy() {
 			decision.DropReason = DropReasonRouterBusy
-			bacnet.Logger.Debug(decision.String())
+			log.Logger.Debug(decision.String())
 			return decision, nil
 		}
 
@@ -323,7 +325,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 		}
 		decision.Forwards = forwards
 		decision.DropReason = dropReason
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 
@@ -334,12 +336,12 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 			dnet,
 			npdu.NLMRejectReasonOther,
 		)
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 	if route.port == inPort {
 		decision.DropReason = DropReasonSamePort
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 
@@ -347,7 +349,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	// packet source network.
 	if _, blocked := sourcePorts[route.port]; blocked {
 		decision.DropReason = DropReasonLoopSuppressed
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 
@@ -356,7 +358,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 	if r.policy.Busy() {
 		decision.DropReason = DropReasonRouterBusy
 		decision.RejectResponse = buildRejectResponse(dnet, npdu.NLMRejectReasonRouterBusy)
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 
@@ -369,7 +371,7 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 			return Decision{}, err
 		}
 		decision.Forwards = []Forward{forward}
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 
@@ -383,11 +385,11 @@ func (r *routerImpl) Evaluate(inPort PortID, pdu *npdu.NetworkLayerProtocolDataU
 		if dropReason == DropReasonHopCountExpired {
 			decision.RejectResponse = buildRejectResponse(dnet, npdu.NLMRejectReasonTooManyHops)
 		}
-		bacnet.Logger.Debug(decision.String())
+		log.Logger.Debug(decision.String())
 		return decision, nil
 	}
 	decision.Forwards = []Forward{forward}
-	bacnet.Logger.Debug(decision.String())
+	log.Logger.Debug(decision.String())
 	return decision, nil
 }
 
@@ -457,7 +459,7 @@ func (r *routerImpl) evaluateGlobalBroadcast(inPort PortID, sourcePorts map[Port
 		if dropReason == DropReasonHopCountExpired {
 			// Silently skip this port on broadcast hop-count expiry; no reject for
 			// broadcasts since there is no single addressable originator.
-			bacnet.Logger.Warn(
+			log.Logger.Warn(
 				"npdu router global broadcast skip egress port",
 				"reason", dropReason.String(),
 				"out_port", port,

@@ -7,15 +7,17 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	errors2 "go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
+	"go.wdy.de/bacnet/common/types"
 	bacencoding "go.wdy.de/bacnet/encoding"
 )
 
 // RemoteErrorAPDU indicates the peer completed a confirmed request with an Error APDU.
 type RemoteErrorAPDU struct {
-	InvokeId InvokeID
+	InvokeId      InvokeID
 	ServiceChoice ServiceChoice
-	ErrorPayload []byte
+	ErrorPayload  []byte
 }
 
 func (e RemoteErrorAPDU) Error() string {
@@ -97,13 +99,13 @@ func classifyRemoteAPDUError(serviceChoice ServiceChoice, err error) error {
 
 // PropertyReference identifies one property (and optional array index) on an object.
 type PropertyReference struct {
-	PropertyIdentifier bacnet.PropertyIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 }
 
 // ReadAccessSpecification defines one object and its requested properties for ReadPropertyMultiple.
 type ReadAccessSpecification struct {
-	ObjectIdentifier bacnet.ObjectIdentifier
+	ObjectIdentifier types.ObjectIdentifier
 	Properties       []PropertyReference
 }
 
@@ -125,15 +127,15 @@ func NewReadPropertyMultipleRequest(specs []ReadAccessSpecification) (ReadProper
 
 func validateReadPropertyMultipleRequest(req ReadPropertyMultipleRequest) error {
 	if len(req.Specs) == 0 {
-		return bacnet.NewValidationError("specs", len(req.Specs), ErrEncodeFailure)
+		return errors2.NewValidationError("specs", len(req.Specs), ErrEncodeFailure)
 	}
 
 	for i, spec := range req.Specs {
 		if !spec.ObjectIdentifier.ObjectType().Valid() {
-			return bacnet.NewValidationError(fmt.Sprintf("specs[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
+			return errors2.NewValidationError(fmt.Sprintf("specs[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
 		}
 		if len(spec.Properties) == 0 {
-			return bacnet.NewValidationError(fmt.Sprintf("specs[%d].properties", i), len(spec.Properties), ErrEncodeFailure)
+			return errors2.NewValidationError(fmt.Sprintf("specs[%d].properties", i), len(spec.Properties), ErrEncodeFailure)
 		}
 	}
 
@@ -142,7 +144,7 @@ func validateReadPropertyMultipleRequest(req ReadPropertyMultipleRequest) error 
 
 // ReadPropertyResult carries one property result entry from ReadPropertyMultiple-ACK.
 type ReadPropertyResult struct {
-	PropertyIdentifier bacnet.PropertyIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	PropertyValue      []byte
 	Error              []byte
@@ -150,7 +152,7 @@ type ReadPropertyResult struct {
 
 // ReadAccessResult carries all property results for one object.
 type ReadAccessResult struct {
-	ObjectIdentifier bacnet.ObjectIdentifier
+	ObjectIdentifier types.ObjectIdentifier
 	Results          []ReadPropertyResult
 }
 
@@ -159,7 +161,7 @@ type ReadPropertyMultipleACK struct {
 	Results []ReadAccessResult
 }
 
-func (c *clientImpl) ReadPropertyMultiple(ctx context.Context, dst bacnet.Address, req ReadPropertyMultipleRequest) (ReadPropertyMultipleACK, error) {
+func (c *clientImpl) ReadPropertyMultiple(ctx context.Context, dst netprim.Address, req ReadPropertyMultipleRequest) (ReadPropertyMultipleACK, error) {
 	if err := validateReadPropertyMultipleRequest(req); err != nil {
 		return ReadPropertyMultipleACK{}, err
 	}
@@ -217,7 +219,7 @@ func decodeReadPropertyMultipleACKPayload(payload []byte) (ReadPropertyMultipleA
 		if len(objBytes) != 4 {
 			return ReadPropertyMultipleACK{}, fmt.Errorf("%w: invalid object identifier length %d", ErrDecodeFailure, len(objBytes))
 		}
-		objID := bacnet.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
+		objID := types.ObjectIdentifier(binary.BigEndian.Uint32(objBytes))
 		cursor = next
 
 		next, err = expectOpeningTag(payload, cursor, 1)
@@ -264,7 +266,7 @@ func decodeReadPropertyResult(payload []byte, offset int) (ReadPropertyResult, i
 	if err != nil {
 		return ReadPropertyResult{}, offset, fmt.Errorf("%w: invalid property identifier: %v", ErrDecodeFailure, err)
 	}
-	out.PropertyIdentifier = bacnet.PropertyIdentifier(propID)
+	out.PropertyIdentifier = types.PropertyIdentifier(propID)
 	offset = next
 
 	if looksLikeContextPrimitiveTag(payload[offset], 3) {
@@ -342,8 +344,8 @@ func decodeTaggedBody(payload []byte, offset int, tagNumber uint32) (int, []byte
 
 // WritePropertyRequest is the typed request payload for WriteProperty.
 type WritePropertyRequest struct {
-	ObjectIdentifier   bacnet.ObjectIdentifier
-	PropertyIdentifier bacnet.PropertyIdentifier
+	ObjectIdentifier   types.ObjectIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	PropertyValue      []byte
 	Priority           *uint8
@@ -351,8 +353,8 @@ type WritePropertyRequest struct {
 
 // NewWritePropertyRequest constructs a validated WritePropertyRequest.
 func NewWritePropertyRequest(
-	objectIdentifier bacnet.ObjectIdentifier,
-	propertyIdentifier bacnet.PropertyIdentifier,
+	objectIdentifier types.ObjectIdentifier,
+	propertyIdentifier types.PropertyIdentifier,
 	arrayIndex *uint32,
 	propertyValue []byte,
 	priority *uint8,
@@ -372,20 +374,20 @@ func NewWritePropertyRequest(
 
 func validateWritePropertyRequest(req WritePropertyRequest) error {
 	if !req.ObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
+		return errors2.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
 	}
 	if len(req.PropertyValue) == 0 {
-		return bacnet.NewValidationError("property value", len(req.PropertyValue), ErrEncodeFailure)
+		return errors2.NewValidationError("property value", len(req.PropertyValue), ErrEncodeFailure)
 	}
 	if req.Priority != nil {
 		if *req.Priority == 0 || *req.Priority > 16 {
-			return bacnet.NewValidationError("priority", *req.Priority, ErrEncodeFailure)
+			return errors2.NewValidationError("priority", *req.Priority, ErrEncodeFailure)
 		}
 	}
 	return nil
 }
 
-func (c *clientImpl) WriteProperty(ctx context.Context, dst bacnet.Address, req WritePropertyRequest) error {
+func (c *clientImpl) WriteProperty(ctx context.Context, dst netprim.Address, req WritePropertyRequest) error {
 	if err := validateWritePropertyRequest(req); err != nil {
 		return err
 	}
@@ -428,7 +430,7 @@ func encodeWritePropertyRequestPayload(req WritePropertyRequest) ([]byte, error)
 
 // PropertyValueWrite identifies one property write operation.
 type PropertyValueWrite struct {
-	PropertyIdentifier bacnet.PropertyIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	PropertyValue      []byte
 	Priority           *uint8
@@ -436,7 +438,7 @@ type PropertyValueWrite struct {
 
 // WriteAccessSpecification defines one object and its property writes.
 type WriteAccessSpecification struct {
-	ObjectIdentifier bacnet.ObjectIdentifier
+	ObjectIdentifier types.ObjectIdentifier
 	Values           []PropertyValueWrite
 }
 
@@ -458,23 +460,23 @@ func NewWritePropertyMultipleRequest(writes []WriteAccessSpecification) (WritePr
 
 func validateWritePropertyMultipleRequest(req WritePropertyMultipleRequest) error {
 	if len(req.Writes) == 0 {
-		return bacnet.NewValidationError("writes", len(req.Writes), ErrEncodeFailure)
+		return errors2.NewValidationError("writes", len(req.Writes), ErrEncodeFailure)
 	}
 
 	for i, spec := range req.Writes {
 		if !spec.ObjectIdentifier.ObjectType().Valid() {
-			return bacnet.NewValidationError(fmt.Sprintf("writes[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
+			return errors2.NewValidationError(fmt.Sprintf("writes[%d].object identifier", i), spec.ObjectIdentifier, ErrEncodeFailure)
 		}
 		if len(spec.Values) == 0 {
-			return bacnet.NewValidationError(fmt.Sprintf("writes[%d].values", i), len(spec.Values), ErrEncodeFailure)
+			return errors2.NewValidationError(fmt.Sprintf("writes[%d].values", i), len(spec.Values), ErrEncodeFailure)
 		}
 		for j, v := range spec.Values {
 			if len(v.PropertyValue) == 0 {
-				return bacnet.NewValidationError(fmt.Sprintf("writes[%d].values[%d].property value", i, j), len(v.PropertyValue), ErrEncodeFailure)
+				return errors2.NewValidationError(fmt.Sprintf("writes[%d].values[%d].property value", i, j), len(v.PropertyValue), ErrEncodeFailure)
 			}
 			if v.Priority != nil {
 				if *v.Priority == 0 || *v.Priority > 16 {
-					return bacnet.NewValidationError(fmt.Sprintf("writes[%d].values[%d].priority", i, j), *v.Priority, ErrEncodeFailure)
+					return errors2.NewValidationError(fmt.Sprintf("writes[%d].values[%d].priority", i, j), *v.Priority, ErrEncodeFailure)
 				}
 			}
 		}
@@ -483,7 +485,7 @@ func validateWritePropertyMultipleRequest(req WritePropertyMultipleRequest) erro
 	return nil
 }
 
-func (c *clientImpl) WritePropertyMultiple(ctx context.Context, dst bacnet.Address, req WritePropertyMultipleRequest) error {
+func (c *clientImpl) WritePropertyMultiple(ctx context.Context, dst netprim.Address, req WritePropertyMultipleRequest) error {
 	if err := validateWritePropertyMultipleRequest(req); err != nil {
 		return err
 	}
@@ -607,8 +609,8 @@ type ReadRangeByTime struct {
 
 // ReadRangeRequest is the typed request payload for ReadRange.
 type ReadRangeRequest struct {
-	ObjectIdentifier   bacnet.ObjectIdentifier
-	PropertyIdentifier bacnet.PropertyIdentifier
+	ObjectIdentifier   types.ObjectIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	ByPosition         *ReadRangeByPosition
 	BySequenceNumber   *ReadRangeBySequenceNumber
@@ -617,8 +619,8 @@ type ReadRangeRequest struct {
 
 // NewReadRangeRequest constructs a validated ReadRangeRequest.
 func NewReadRangeRequest(
-	objectIdentifier bacnet.ObjectIdentifier,
-	propertyIdentifier bacnet.PropertyIdentifier,
+	objectIdentifier types.ObjectIdentifier,
+	propertyIdentifier types.PropertyIdentifier,
 	arrayIndex *uint32,
 	byPosition *ReadRangeByPosition,
 	bySequenceNumber *ReadRangeBySequenceNumber,
@@ -646,31 +648,31 @@ func NewReadRangeRequest(
 
 func validateReadRangeRequest(req ReadRangeRequest) error {
 	if !req.ObjectIdentifier.ObjectType().Valid() {
-		return bacnet.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
+		return errors2.NewValidationError("object identifier", req.ObjectIdentifier, ErrEncodeFailure)
 	}
 
 	variantCount := 0
 	if req.ByPosition != nil {
 		variantCount++
 		if req.ByPosition.Count == 0 {
-			return bacnet.NewValidationError("by position count", req.ByPosition.Count, ErrEncodeFailure)
+			return errors2.NewValidationError("by position count", req.ByPosition.Count, ErrEncodeFailure)
 		}
 	}
 	if req.BySequenceNumber != nil {
 		variantCount++
 		if req.BySequenceNumber.Count == 0 {
-			return bacnet.NewValidationError("by sequence number count", req.BySequenceNumber.Count, ErrEncodeFailure)
+			return errors2.NewValidationError("by sequence number count", req.BySequenceNumber.Count, ErrEncodeFailure)
 		}
 	}
 	if req.ByTime != nil {
 		variantCount++
 		if req.ByTime.Count == 0 {
-			return bacnet.NewValidationError("by time count", req.ByTime.Count, ErrEncodeFailure)
+			return errors2.NewValidationError("by time count", req.ByTime.Count, ErrEncodeFailure)
 		}
 	}
 
 	if variantCount != 1 {
-		return bacnet.NewValidationError("range variant", variantCount, ErrEncodeFailure)
+		return errors2.NewValidationError("range variant", variantCount, ErrEncodeFailure)
 	}
 
 	return nil
@@ -678,15 +680,15 @@ func validateReadRangeRequest(req ReadRangeRequest) error {
 
 // ReadRangeACK is the typed ACK payload for ReadRange.
 type ReadRangeACK struct {
-	ObjectIdentifier   bacnet.ObjectIdentifier
-	PropertyIdentifier bacnet.PropertyIdentifier
+	ObjectIdentifier   types.ObjectIdentifier
+	PropertyIdentifier types.PropertyIdentifier
 	ArrayIndex         *uint32
 	ResultFlags        []byte
 	ItemCount          *uint32
 	ItemData           []byte
 }
 
-func (c *clientImpl) ReadRange(ctx context.Context, dst bacnet.Address, req ReadRangeRequest) (ReadRangeACK, error) {
+func (c *clientImpl) ReadRange(ctx context.Context, dst netprim.Address, req ReadRangeRequest) (ReadRangeACK, error) {
 	if err := validateReadRangeRequest(req); err != nil {
 		return ReadRangeACK{}, err
 	}
@@ -757,7 +759,7 @@ func decodeReadRangeACKPayload(payload []byte) (ReadRangeACK, error) {
 	if err != nil {
 		return ReadRangeACK{}, fmt.Errorf("%w: invalid property identifier: %v", ErrDecodeFailure, err)
 	}
-	res.PropertyIdentifier = bacnet.PropertyIdentifier(propID)
+	res.PropertyIdentifier = types.PropertyIdentifier(propID)
 	cursor = next
 
 	if cursor < len(payload) && looksLikeContextPrimitiveTag(payload[cursor], 2) {

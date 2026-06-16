@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // PayloadKind identifies whether the NPDU carries application payload bytes or
@@ -177,7 +179,7 @@ type SourceSpecifier struct {
 
 // NPCI models NPDU control and optional routed addressing metadata.
 type NPCI struct {
-	Priority       bacnet.NetworkPriority
+	Priority       netprim.NetworkPriority
 	ExpectingReply bool
 	Destination    *DestinationSpecifier
 	Source         *SourceSpecifier
@@ -262,7 +264,7 @@ func (n *NetworkLayerProtocolDataUnit) Valid() bool {
 	}
 
 	// Protocol version must match exactly
-	if n.protocolVersion != bacnet.ProtocolVersion {
+	if n.protocolVersion != netprim.ProtocolVersion {
 		return false
 	}
 
@@ -327,7 +329,7 @@ func (n *NetworkLayerProtocolDataUnit) Valid() bool {
 			// DLEN > 0: DADR must be present and exactly DLEN bytes long.
 			// Global broadcast (0xFFFF) combined with a specific DADR is illegal; the
 			// decoder already rejects such frames on ingress.
-			if bacnet.NetworkNumber(*n.dnet).IsGlobalBroadcast() {
+			if netprim.NetworkNumber(*n.dnet).IsGlobalBroadcast() {
 				return false
 			}
 			if n.dadr == nil || len(n.dadr) != int(*n.dlen) {
@@ -371,7 +373,7 @@ func (n *NetworkLayerProtocolDataUnit) Valid() bool {
 // Returns ErrEncodeFailure if the NPDU is not Valid().
 func (n *NetworkLayerProtocolDataUnit) Encode() ([]byte, error) {
 	if !n.Valid() {
-		bacnet.Logger.Error("npdu encode invalid state", "error", ErrEncodeFailure)
+		log.Logger.Error("npdu encode invalid state", "error", ErrEncodeFailure)
 		return nil, fmt.Errorf("%w: npdu is not in a valid state", ErrEncodeFailure)
 	}
 
@@ -447,12 +449,12 @@ func (n *NetworkLayerProtocolDataUnit) Encode() ([]byte, error) {
 // more specific sentinel) on malformed input.
 func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 	if n == nil {
-		bacnet.Logger.Error("npdu decode nil receiver", "error", ErrDecodeFailure)
+		log.Logger.Error("npdu decode nil receiver", "error", ErrDecodeFailure)
 		return fmt.Errorf("%w: cannot decode into nil pointer", ErrDecodeFailure)
 	}
-	bacnet.Logger.Debug("npdu decode inbound", "bytes", len(data))
+	log.Logger.Debug("npdu decode inbound", "bytes", len(data))
 	if len(data) < minNpduLen {
-		return bacnet.NewValidationError("data", len(data), ErrInvalidLength)
+		return errors.NewValidationError("data", len(data), ErrInvalidLength)
 	}
 
 	res := NetworkLayerProtocolDataUnit{}
@@ -460,14 +462,14 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 
 	res.protocolVersion = data[i]
 	i++
-	if res.protocolVersion != bacnet.ProtocolVersion {
-		return bacnet.NewValidationError("protocol version", res.protocolVersion, ErrInvalidProtocolVersion)
+	if res.protocolVersion != netprim.ProtocolVersion {
+		return errors.NewValidationError("protocol version", res.protocolVersion, ErrInvalidProtocolVersion)
 	}
 
 	res.flags = NPCIFieldsFlags(data[i])
 	i++
 	if res.flags&reservedBit4Mask != 0 || res.flags&reservedBit6Mask != 0 {
-		return bacnet.NewValidationError("NPCI", res.flags, ErrReservedBitSet)
+		return errors.NewValidationError("NPCI", res.flags, ErrReservedBitSet)
 	}
 
 	dstSpecifier := res.flags&destinationSpecifierMask != 0
@@ -482,7 +484,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 
 		res.dnet = new(UltimateDestinationNetworkNumber(binary.BigEndian.Uint16(data[i:])))
 		if *res.dnet == 0 {
-			return bacnet.NewValidationError("dnet", *res.dnet, ErrInvalidNetworkNumber)
+			return errors.NewValidationError("dnet", *res.dnet, ErrInvalidNetworkNumber)
 		}
 		i += 2
 
@@ -491,8 +493,8 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 
 		if *res.dlen > 0 {
 			//reject global broadcast for non-zero DLEN
-			if bacnet.NetworkNumber(*res.dnet).IsGlobalBroadcast() {
-				return bacnet.NewValidationError("dnet", *res.dnet, ErrInvalidNetworkNumber)
+			if netprim.NetworkNumber(*res.dnet).IsGlobalBroadcast() {
+				return errors.NewValidationError("dnet", *res.dnet, ErrInvalidNetworkNumber)
 			}
 
 			if i+int(*res.dlen) > len(data) {
@@ -511,7 +513,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 
 		snet := OriginalSourceNetworkNumber(binary.BigEndian.Uint16(data[i:]))
 		if !snet.Valid() {
-			return bacnet.NewValidationError("snet", snet, ErrInvalidNetworkNumber)
+			return errors.NewValidationError("snet", snet, ErrInvalidNetworkNumber)
 		}
 
 		res.snet = &snet
@@ -520,7 +522,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 		slen := OriginalSourceNetworkNumberMacAddressLength(data[i])
 		i++
 		if slen == 0 {
-			return bacnet.NewValidationError("SLEN", slen, ErrInvalidLength)
+			return errors.NewValidationError("SLEN", slen, ErrInvalidLength)
 		}
 
 		res.slen = &slen
@@ -571,12 +573,12 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 			header.VendorID = new(*res.vendorId)
 		}
 		if err := validateNetworkLayerMessagePayload(header, res.apdu); err != nil {
-			bacnet.Logger.Error("npdu decode validate network-layer payload", "error", err)
+			log.Logger.Error("npdu decode validate network-layer payload", "error", err)
 			return fmt.Errorf("%w: %v", ErrDecodeFailure, err)
 		}
 	}
 
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"npdu decode success",
 		"flags", uint8(res.flags),
 		"has_destination", dstSpecifier,
@@ -596,7 +598,7 @@ func (n *NetworkLayerProtocolDataUnit) Decode(data []byte) error {
 // This is the most common form for BACnet/IP devices communicating on the same subnet.
 // priority controls the NPCI priority field. expectingReply sets the Expecting-Reply bit.
 // apdu must be non-empty.
-func NewLocalAPDU(priority bacnet.NetworkPriority, expectingReply bool, apdu []byte) (*NetworkLayerProtocolDataUnit, error) {
+func NewLocalAPDU(priority netprim.NetworkPriority, expectingReply bool, apdu []byte) (*NetworkLayerProtocolDataUnit, error) {
 	return NewApplicationNPDU(NPCI{Priority: priority, ExpectingReply: expectingReply}, apdu)
 }
 
@@ -607,7 +609,7 @@ func NewRoutedAPDU(
 	dnet UltimateDestinationNetworkNumber,
 	dadr UltimateDestinationMacLayerAddress,
 	hopCount uint8,
-	priority bacnet.NetworkPriority,
+	priority netprim.NetworkPriority,
 	expectingReply bool,
 	apdu []byte,
 ) (*NetworkLayerProtocolDataUnit, error) {
@@ -630,7 +632,7 @@ func NewRoutedAPDU(
 func NewSourcedAPDU(
 	snet OriginalSourceNetworkNumber,
 	sadr OriginalSourceMacLayerAddress,
-	priority bacnet.NetworkPriority,
+	priority netprim.NetworkPriority,
 	expectingReply bool,
 	apdu []byte,
 ) (*NetworkLayerProtocolDataUnit, error) {
@@ -655,7 +657,7 @@ func NewRoutedSourcedAPDU(
 	hopCount uint8,
 	snet OriginalSourceNetworkNumber,
 	sadr OriginalSourceMacLayerAddress,
-	priority bacnet.NetworkPriority,
+	priority netprim.NetworkPriority,
 	expectingReply bool,
 	apdu []byte,
 ) (*NetworkLayerProtocolDataUnit, error) {
@@ -680,9 +682,9 @@ func NewRoutedSourcedAPDU(
 // NewNetworkLayerMessage constructs an NPDU carrying a standard network layer message
 // (messageType < 0x80). For proprietary types use NewProprietaryNetworkLayerMessage.
 // data may be nil for message types that carry no payload.
-func NewNetworkLayerMessage(messageType uint8, data []byte, priority bacnet.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
+func NewNetworkLayerMessage(messageType uint8, data []byte, priority netprim.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
 	if messageType >= 0x80 {
-		return nil, bacnet.NewValidationError("message type", messageType, ErrProprietaryMessageType)
+		return nil, errors.NewValidationError("message type", messageType, ErrProprietaryMessageType)
 	}
 	return NewNetworkLayerNPDU(
 		NPCI{Priority: priority},
@@ -694,9 +696,9 @@ func NewNetworkLayerMessage(messageType uint8, data []byte, priority bacnet.Netw
 // NewProprietaryNetworkLayerMessage constructs an NPDU carrying a proprietary network
 // layer message (messageType >= 0x80). vendorID identifies the originating vendor.
 // data may be nil.
-func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data []byte, priority bacnet.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
+func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data []byte, priority netprim.NetworkPriority) (*NetworkLayerProtocolDataUnit, error) {
 	if messageType < 0x80 {
-		return nil, bacnet.NewValidationError("message type", messageType, ErrInvalidMessage)
+		return nil, errors.NewValidationError("message type", messageType, ErrInvalidMessage)
 	}
 	return NewNetworkLayerNPDU(
 		NPCI{Priority: priority},
@@ -708,17 +710,17 @@ func NewProprietaryNetworkLayerMessage(messageType uint8, vendorID uint16, data 
 // NewApplicationNPDU constructs an NPDU carrying opaque application payload bytes.
 // The network layer does not interpret the application payload.
 func NewApplicationNPDU(npci NPCI, payload []byte) (*NetworkLayerProtocolDataUnit, error) {
-	if npci.Priority > bacnet.NetworkPriorityLifeSafety {
-		return nil, bacnet.NewValidationError("priority", npci.Priority, ErrInvalidPriority)
+	if npci.Priority > netprim.NetworkPriorityLifeSafety {
+		return nil, errors.NewValidationError("priority", npci.Priority, ErrInvalidPriority)
 	}
 
 	if len(payload) == 0 {
-		return nil, bacnet.NewValidationError("payload", len(payload), ErrInvalidLength)
+		return nil, errors.NewValidationError("payload", len(payload), ErrInvalidLength)
 	}
 
 	n, err := newNPDUWithNPCI(npci)
 	if err != nil {
-		bacnet.Logger.Error("npdu new application with npci", "error", err)
+		log.Logger.Error("npdu new application with npci", "error", err)
 		return nil, err
 	}
 
@@ -729,23 +731,23 @@ func NewApplicationNPDU(npci NPCI, payload []byte) (*NetworkLayerProtocolDataUni
 // NewNetworkLayerNPDU constructs an NPDU carrying network-layer-message payload bytes.
 // The payload bytes remain opaque at NPDU scope.
 func NewNetworkLayerNPDU(npci NPCI, header NetworkLayerMessageHeader, payload []byte) (*NetworkLayerProtocolDataUnit, error) {
-	if npci.Priority > bacnet.NetworkPriorityLifeSafety {
-		return nil, bacnet.NewValidationError("priority", npci.Priority, ErrInvalidPriority)
+	if npci.Priority > netprim.NetworkPriorityLifeSafety {
+		return nil, errors.NewValidationError("priority", npci.Priority, ErrInvalidPriority)
 	}
 
 	if !header.structureValid() {
-		return nil, bacnet.NewValidationError("network layer message header", header, ErrInvalidMessage)
+		return nil, errors.NewValidationError("network layer message header", header, ErrInvalidMessage)
 	}
 
 	normalizedPayload, err := decodeAndNormalizeNetworkLayerMessagePayload(header, payload)
 	if err != nil {
-		bacnet.Logger.Error("npdu normalize network-layer payload", "error", err)
-		return nil, bacnet.NewValidationError("payload", "actual payload omitted from error", err)
+		log.Logger.Error("npdu normalize network-layer payload", "error", err)
+		return nil, errors.NewValidationError("payload", "actual payload omitted from error", err)
 	}
 
 	n, err := newNPDUWithNPCI(npci)
 	if err != nil {
-		bacnet.Logger.Error("npdu new network-layer with npci", "error", err)
+		log.Logger.Error("npdu new network-layer with npci", "error", err)
 		return nil, err
 	}
 	n.flags |= isNetworkLayerMessageMask
@@ -760,10 +762,10 @@ func NewNetworkLayerNPDU(npci NPCI, header NetworkLayerMessageHeader, payload []
 // NewNetworkLayerNPDUFromMessage constructs an NPDU from a typed network-layer-message model.
 func NewNetworkLayerNPDUFromMessage(npci NPCI, message NetworkLayerMessageModel) (*NetworkLayerProtocolDataUnit, error) {
 	if message == nil {
-		return nil, bacnet.NewValidationError("message", nil, ErrInvalidMessage)
+		return nil, errors.NewValidationError("message", nil, ErrInvalidMessage)
 	}
 	if !message.Valid() {
-		return nil, bacnet.NewValidationError("message", message, ErrInvalidMessage)
+		return nil, errors.NewValidationError("message", message, ErrInvalidMessage)
 	}
 
 	header := MustNetworkLayerMessageHeader(message)
@@ -777,7 +779,7 @@ func newNPDUWithNPCI(npci NPCI) (*NetworkLayerProtocolDataUnit, error) {
 	}
 
 	n := &NetworkLayerProtocolDataUnit{
-		protocolVersion: bacnet.ProtocolVersion,
+		protocolVersion: netprim.ProtocolVersion,
 		flags:           flags,
 	}
 
@@ -786,23 +788,23 @@ func newNPDUWithNPCI(npci NPCI) (*NetworkLayerProtocolDataUnit, error) {
 
 		dlen := len(npci.Destination.DADR)
 
-		if bacnet.NetworkNumber(dnet).IsLocal() {
-			return nil, bacnet.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
+		if netprim.NetworkNumber(dnet).IsLocal() {
+			return nil, errors.NewValidationError("dnet", dnet, ErrInvalidNetworkNumber)
 		}
 
 		if dlen > 255 {
-			return nil, bacnet.NewValidationError("dlen", len(npci.Destination.DADR), ErrInvalidLength)
+			return nil, errors.NewValidationError("dlen", len(npci.Destination.DADR), ErrInvalidLength)
 		}
 
-		if bacnet.NetworkNumber(dnet).IsGlobalBroadcast() {
+		if netprim.NetworkNumber(dnet).IsGlobalBroadcast() {
 			if dlen != 0 {
-				return nil, bacnet.NewValidationError("dlen", fmt.Sprintf("dlen == %v, despite global broadcast, should be 0", dlen), ErrInvalidLength)
+				return nil, errors.NewValidationError("dlen", fmt.Sprintf("dlen == %v, despite global broadcast, should be 0", dlen), ErrInvalidLength)
 			}
 		}
 
 		hopCount := npci.Destination.HopCount
 		if hopCount == 0 {
-			return nil, bacnet.NewValidationError("hop count", hopCount, ErrInvalidHopCount)
+			return nil, errors.NewValidationError("hop count", hopCount, ErrInvalidHopCount)
 		}
 
 		n.flags |= destinationSpecifierMask
@@ -818,12 +820,12 @@ func newNPDUWithNPCI(npci NPCI) (*NetworkLayerProtocolDataUnit, error) {
 		slen := len(npci.Source.SADR)
 
 		if slen == 0 || slen > 255 {
-			return nil, bacnet.NewValidationError("sadr", len(npci.Source.SADR), ErrInvalidLength)
+			return nil, errors.NewValidationError("sadr", len(npci.Source.SADR), ErrInvalidLength)
 		}
 
 		snet := npci.Source.SNET
 		if !snet.Valid() {
-			return nil, bacnet.NewValidationError("snet", snet, ErrInvalidNetworkNumber)
+			return nil, errors.NewValidationError("snet", snet, ErrInvalidNetworkNumber)
 		}
 
 		n.flags |= sourceSpecifierMask
@@ -844,8 +846,8 @@ func (n *NetworkLayerProtocolDataUnit) Version() uint8 { return n.protocolVersio
 func (n *NetworkLayerProtocolDataUnit) Flags() NPCIFieldsFlags { return n.flags }
 
 // Priority returns the 2-bit network priority from the NPCI.
-func (n *NetworkLayerProtocolDataUnit) Priority() bacnet.NetworkPriority {
-	return bacnet.NetworkPriority(n.flags & networkPriorityMask)
+func (n *NetworkLayerProtocolDataUnit) Priority() netprim.NetworkPriority {
+	return netprim.NetworkPriority(n.flags & networkPriorityMask)
 }
 
 // IsExpectingReply reports whether the Expecting-Reply bit is set in the NPCI.
@@ -973,7 +975,7 @@ func (n *NetworkLayerProtocolDataUnit) NetworkLayerHeader() *NetworkLayerMessage
 // It returns nil,nil when the NPDU carries application payload.
 func (n *NetworkLayerProtocolDataUnit) NetworkLayerMessageModel() (NetworkLayerMessageModel, error) {
 	if n == nil {
-		return nil, bacnet.NewValidationError("npdu", nil, ErrDecodeFailure)
+		return nil, errors.NewValidationError("npdu", nil, ErrDecodeFailure)
 	}
 	if !n.IsNetworkLayerMessage() {
 		return nil, nil
@@ -981,7 +983,7 @@ func (n *NetworkLayerProtocolDataUnit) NetworkLayerMessageModel() (NetworkLayerM
 
 	header := n.NetworkLayerHeader()
 	if header == nil {
-		return nil, bacnet.NewValidationError("network layer header", nil, ErrDecodeFailure)
+		return nil, errors.NewValidationError("network layer header", nil, ErrDecodeFailure)
 	}
 
 	return DecodeNetworkLayerMessageModel(*header, n.apdu)
@@ -1080,11 +1082,11 @@ type LocalNetworkDestinationMacLayerAddress []byte
 type OriginalSourceNetworkNumber uint16
 
 func (snet OriginalSourceNetworkNumber) Valid() bool {
-	return snet != OriginalSourceNetworkNumber(bacnet.LocalNetwork) && snet != OriginalSourceNetworkNumber(bacnet.GlobalBroadcastNetwork)
+	return snet != OriginalSourceNetworkNumber(netprim.LocalNetwork) && snet != OriginalSourceNetworkNumber(netprim.GlobalBroadcastNetwork)
 }
 
-func (snet OriginalSourceNetworkNumber) ToBacnetNetworkNumber() bacnet.NetworkNumber {
-	return bacnet.NetworkNumber(snet)
+func (snet OriginalSourceNetworkNumber) ToBacnetNetworkNumber() netprim.NetworkNumber {
+	return netprim.NetworkNumber(snet)
 }
 
 type OriginalSourceNetworkNumberMacAddressLength uint8

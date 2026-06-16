@@ -1,34 +1,26 @@
-package bacnet
+package types
 
-import "fmt"
+import (
+	"fmt"
 
-// NetworkNumber identifies a BACnet network.
-type NetworkNumber uint16
-
-// IsLocal reports whether the network is the local BACnet network.
-func (n NetworkNumber) IsLocal() bool {
-	return n == LocalNetwork
-}
-
-// IsGlobalBroadcast reports whether the network is the global broadcast network.
-func (n NetworkNumber) IsGlobalBroadcast() bool {
-	return n == GlobalBroadcastNetwork
-}
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
+)
 
 // DeviceInstance identifies a BACnet device object instance.
 type DeviceInstance uint32
 
 // NewDeviceInstance constructs a validated BACnet device instance.
 func NewDeviceInstance(instance uint32) (DeviceInstance, error) {
-	if instance > MaxInstanceNumber {
-		return 0, NewValidationError("device instance", instance, ErrInvalidDeviceInstance)
+	if instance > netprim.MaxInstanceNumber {
+		return 0, errors.NewValidationError("device instance", instance, errors.ErrInvalidDeviceInstance)
 	}
 	return DeviceInstance(instance), nil
 }
 
 // Valid reports whether the device instance is within the BACnet range.
 func (d DeviceInstance) Valid() bool {
-	return uint32(d) <= MaxInstanceNumber
+	return uint32(d) <= netprim.MaxInstanceNumber
 }
 
 // ObjectType identifies a BACnet object type.
@@ -47,11 +39,14 @@ const (
 	ObjectTypeMultiStateInput   ObjectType = 13
 	ObjectTypeMultiStateOutput  ObjectType = 14
 	ObjectTypeNotificationClass ObjectType = 15
+
+	// ObjectTypeMax is the maximum valid value for an ObjectType.
+	ObjectTypeMax ObjectType = (1 << 10) - 1
 )
 
 // Valid reports whether the object type fits into a BACnet object identifier.
 func (o ObjectType) Valid() bool {
-	return o <= MaxObjectType
+	return o <= ObjectTypeMax
 }
 
 func (o ObjectType) String() string {
@@ -91,10 +86,11 @@ type ObjectIdentifier uint32
 // NewObjectIdentifier constructs a validated BACnet object identifier.
 func NewObjectIdentifier(objectType ObjectType, instance uint32) (ObjectIdentifier, error) {
 	if !objectType.Valid() {
-		return 0, NewValidationError("object type", objectType, ErrInvalidObjectType)
+		return 0, errors.NewValidationError("object type", objectType, errors.ErrInvalidObjectType)
 	}
-	if instance > MaxInstanceNumber {
-		return 0, NewValidationError("object instance", instance, ErrInvalidObjectInstance)
+
+	if instance > netprim.MaxInstanceNumber {
+		return 0, errors.NewValidationError("object instance", instance, errors.ErrInvalidObjectInstance)
 	}
 
 	return ObjectIdentifier((uint32(objectType) << 22) | instance), nil
@@ -107,7 +103,7 @@ func (id ObjectIdentifier) ObjectType() ObjectType {
 
 // Instance returns the BACnet object instance portion of the identifier.
 func (id ObjectIdentifier) Instance() uint32 {
-	return uint32(id) & MaxInstanceNumber
+	return uint32(id) & netprim.MaxInstanceNumber
 }
 
 func (id ObjectIdentifier) String() string {

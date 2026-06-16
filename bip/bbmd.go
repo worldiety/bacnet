@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
 )
 
 // BBMD is a BACnet Broadcast Management Device as defined in Annex J of ANSI/ASHRAE 135.
@@ -53,7 +53,7 @@ type BBMD interface {
 func NewBBMD(bdt []BdtEntry) (BBMD, error) {
 	for i, e := range bdt {
 		if !e.Valid() {
-			return nil, bacnet.NewValidationError(fmt.Sprintf("bdt[%d]", i), e, ErrInvalidIPAddress)
+			return nil, errors.NewValidationError(fmt.Sprintf("bdt[%d]", i), e, ErrInvalidIPAddress)
 		}
 	}
 

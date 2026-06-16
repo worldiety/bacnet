@@ -1,19 +1,11 @@
-package bacnet
+package netprim
 
 import (
 	"fmt"
 )
 
-const (
-	// ProtocolVersion is the BACnet protocol version defined by the standard.
-	ProtocolVersion byte = 0x01
-
-	// MaxInstanceNumber is the maximum BACnet object instance number.
-	MaxInstanceNumber uint32 = (1 << 22) - 1
-
-	// MaxObjectType is the maximum standard object type that fits in an object identifier.
-	MaxObjectType ObjectType = (1 << 10) - 1
-)
+// ProtocolVersion is the BACnet protocol version. It is always 0x01.
+const ProtocolVersion byte = 0x01
 
 const (
 	// LocalNetwork represents the local BACnet network number.
@@ -61,4 +53,17 @@ func (n NetworkPriority) String() string {
 	default:
 		return fmt.Sprintf("network-priority(%d)", n)
 	}
+}
+
+// NetworkNumber identifies a BACnet network.
+type NetworkNumber uint16
+
+// IsLocal reports whether the network is the local BACnet network.
+func (n NetworkNumber) IsLocal() bool {
+	return n == LocalNetwork
+}
+
+// IsGlobalBroadcast reports whether the network is the global broadcast network.
+func (n NetworkNumber) IsGlobalBroadcast() bool {
+	return n == GlobalBroadcastNetwork
 }

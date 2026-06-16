@@ -1,4 +1,4 @@
-package bacnet
+package log
 
 import (
 	"log/slog"

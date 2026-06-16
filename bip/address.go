@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"net/netip"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // ip4MACLen is the length of a BACnet/IP MAC address (4-byte IPv4 + 2-byte port).
@@ -19,9 +20,9 @@ const ip4MACLen = 6
 // bacnet.LocalNetwork (0).
 //
 // addr must be a valid IPv4 address-port pair; IPv6 addresses are not supported.
-func AddrPortToAddress(addr netip.AddrPort) (bacnet.Address, error) {
+func AddrPortToAddress(addr netip.AddrPort) (netprim.Address, error) {
 	if !addr.IsValid() || !addr.Addr().Is4() {
-		return bacnet.Address{}, bacnet.NewValidationError("addr", addr, ErrInvalidIPAddress)
+		return netprim.Address{}, errors.NewValidationError("addr", addr, ErrInvalidIPAddress)
 	}
 
 	ip4 := addr.Addr().As4()
@@ -29,8 +30,8 @@ func AddrPortToAddress(addr netip.AddrPort) (bacnet.Address, error) {
 	copy(mac[:4], ip4[:])
 	binary.BigEndian.PutUint16(mac[4:], addr.Port())
 
-	return bacnet.Address{
-		Network: bacnet.LocalNetwork,
+	return netprim.Address{
+		Network: netprim.LocalNetwork,
 		MAC:     mac,
 	}, nil
 }
@@ -42,7 +43,7 @@ func AddrPortToAddress(addr netip.AddrPort) (bacnet.Address, error) {
 // per Annex J of ANSI/ASHRAE 135-2024.
 //
 // Returns ErrUnsupportedAddress if the address is not convertible.
-func AddressToAddrPort(addr bacnet.Address) (netip.AddrPort, error) {
+func AddressToAddrPort(addr netprim.Address) (netip.AddrPort, error) {
 	if !addr.Network.IsLocal() {
 		return netip.AddrPort{}, fmt.Errorf("%w: non-local network %d", ErrUnsupportedAddress, addr.Network)
 	}

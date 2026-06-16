@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 // multiWriteConn extends fakeDatagramConn to capture multiple outbound datagrams
@@ -274,7 +274,7 @@ func TestSendUnicastInvalidDst(t *testing.T) {
 // RegisterAsForeignDevice -------------------------------------------------------
 
 var validBBMD = netip.MustParseAddr("192.168.1.1")
-var validBBMDPort = netip.AddrPortFrom(validBBMD, bacnet.IpDefaultUdpPort)
+var validBBMDPort = netip.AddrPortFrom(validBBMD, netprim.IpDefaultUdpPort)
 
 func TestRegisterAsForeignDeviceSuccess(t *testing.T) {
 	conn := &multiWriteConn{
@@ -321,7 +321,7 @@ func TestRegisterAsForeignDeviceSendsToCorrectBBMD(t *testing.T) {
 		t.Fatalf("RegisterAsForeignDevice: %v", err)
 	}
 
-	wantDst := netip.AddrPortFrom(validBBMD, bacnet.IpDefaultUdpPort)
+	wantDst := netip.AddrPortFrom(validBBMD, netprim.IpDefaultUdpPort)
 	if conn.written[0].addr != wantDst {
 		t.Errorf("dst = %v, want %v", conn.written[0].addr, wantDst)
 	}

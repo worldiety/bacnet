@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -20,7 +20,7 @@ func TestEvaluateLocalAPDU(t *testing.T) {
 		t.Fatalf("NewRouter: %v", err)
 	}
 
-	pdu, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewLocalAPDU: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestEvaluateForwardRoutedAPDU(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10, 0x20})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10, 0x20})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestEvaluateDropsExpiredHopCount(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 1, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 1, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestEvaluateUnknownDestination(t *testing.T) {
 		t.Fatalf("NewRouter: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestEvaluateSuppressesSamePortForwarding(t *testing.T) {
 		t.Fatalf("AddConnectedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestEvaluateGlobalBroadcastFanout(t *testing.T) {
 		t.Fatalf("AddConnectedRoute(300): %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(npdu.UltimateDestinationNetworkNumber(bacnet.GlobalBroadcastNetwork), nil, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(npdu.UltimateDestinationNetworkNumber(netprim.GlobalBroadcastNetwork), nil, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestEvaluateNetworkLayerMessagePreservesHeaderAndPayload(t *testing.T) {
 
 	pdu, err := npdu.NewNetworkLayerNPDU(
 		npdu.NPCI{
-			Priority: bacnet.NetworkPriorityNormal,
+			Priority: netprim.NetworkPriorityNormal,
 			Destination: &npdu.DestinationSpecifier{
 				DNET:     npdu.UltimateDestinationNetworkNumber(100),
 				DADR:     []byte{0xAA},
@@ -277,7 +277,7 @@ func TestEvaluateHopCountExhaustedGeneratesReject(t *testing.T) {
 	}
 
 	// hopCount=1 → after decrement it would be 0, so it is dropped.
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 1, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 1, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestEvaluateNoRejectResponseOnSuccessfulForward(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestEvaluateConnectedDNETDeliversLocally(t *testing.T) {
 		t.Fatalf("AddConnectedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10, 0x20})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10, 0x20})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestEvaluateConnectedDNETStripsDestinationSpecifier(t *testing.T) {
 		t.Fatalf("AddConnectedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0xFF})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0xFF})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestEvaluateConnectedDNETPreservesSourceSpecifier(t *testing.T) {
 	pdu, err := npdu.NewRoutedSourcedAPDU(
 		100, []byte{0xAA}, 5,
 		200, []byte{0xBB},
-		bacnet.NetworkPriorityNormal, false, []byte{0xFF},
+		netprim.NetworkPriorityNormal, false, []byte{0xFF},
 	)
 	if err != nil {
 		t.Fatalf("NewRoutedSourcedAPDU: %v", err)
@@ -456,7 +456,7 @@ func TestEvaluateTransitForwardKindIsTransit(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestEvaluateLoopSuppressionBySNET(t *testing.T) {
 	pdu, err := npdu.NewRoutedSourcedAPDU(
 		200, []byte{0xBB}, 5,
 		300, []byte{0xCC},
-		bacnet.NetworkPriorityNormal, false, []byte{0x10},
+		netprim.NetworkPriorityNormal, false, []byte{0x10},
 	)
 	if err != nil {
 		t.Fatalf("NewRoutedSourcedAPDU: %v", err)
@@ -542,9 +542,9 @@ func TestEvaluateGlobalBroadcastLoopSuppression(t *testing.T) {
 	}
 
 	pdu, err := npdu.NewRoutedSourcedAPDU(
-		npdu.UltimateDestinationNetworkNumber(bacnet.GlobalBroadcastNetwork), nil, 5,
+		npdu.UltimateDestinationNetworkNumber(netprim.GlobalBroadcastNetwork), nil, 5,
 		200, []byte{0xBB},
-		bacnet.NetworkPriorityNormal, false, []byte{0x10},
+		netprim.NetworkPriorityNormal, false, []byte{0x10},
 	)
 	if err != nil {
 		t.Fatalf("NewRoutedSourcedAPDU: %v", err)
@@ -579,8 +579,8 @@ func TestEvaluateGlobalBroadcastHopCountExpiredSkipsPort(t *testing.T) {
 
 	// hopCount=1 → would expire on decrement; global broadcast should just skip forwarding.
 	pdu, err := npdu.NewRoutedAPDU(
-		npdu.UltimateDestinationNetworkNumber(bacnet.GlobalBroadcastNetwork), nil, 1,
-		bacnet.NetworkPriorityNormal, false, []byte{0x10},
+		npdu.UltimateDestinationNetworkNumber(netprim.GlobalBroadcastNetwork), nil, 1,
+		netprim.NetworkPriorityNormal, false, []byte{0x10},
 	)
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
@@ -616,7 +616,7 @@ func TestEvaluatePrefersConnectedRouteWhenMultipleRoutesExist(t *testing.T) {
 		t.Fatalf("AddConnectedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(700, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(700, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -655,7 +655,7 @@ func TestEvaluateRouterBusyDropsUnicastAndGeneratesReject(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -711,8 +711,8 @@ func TestEvaluateRouterBusyDropsGlobalBroadcastWithoutReject(t *testing.T) {
 	}
 
 	pdu, err := npdu.NewRoutedAPDU(
-		npdu.UltimateDestinationNetworkNumber(bacnet.GlobalBroadcastNetwork), nil, 5,
-		bacnet.NetworkPriorityNormal, false, []byte{0x10},
+		npdu.UltimateDestinationNetworkNumber(netprim.GlobalBroadcastNetwork), nil, 5,
+		netprim.NetworkPriorityNormal, false, []byte{0x10},
 	)
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
@@ -753,7 +753,7 @@ func TestEvaluateNotBusyForwardsNormally(t *testing.T) {
 		t.Fatalf("AddLearnedRoute: %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(100, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}
@@ -791,7 +791,7 @@ func TestEvaluateUsesNewestLearnedRouteAndFallsBackAfterExpiry(t *testing.T) {
 		t.Fatalf("AddLearnedRoute(3): %v", err)
 	}
 
-	pdu, err := npdu.NewRoutedAPDU(710, []byte{0xAA}, 5, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	pdu, err := npdu.NewRoutedAPDU(710, []byte{0xAA}, 5, netprim.NetworkPriorityNormal, false, []byte{0x10})
 	if err != nil {
 		t.Fatalf("NewRoutedAPDU: %v", err)
 	}

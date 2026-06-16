@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
 type sentPacket struct {
-	dst    bacnet.Address
+	dst    netprim.Address
 	packet npdu.NetworkLayerProtocolDataUnit
 }
 
@@ -27,7 +27,7 @@ func newTestNPDUTransport() *testNPDUTransport {
 	return &testNPDUTransport{ch: make(chan sentPacket, 8)}
 }
 
-func (t *testNPDUTransport) SendNPDU(_ context.Context, dst bacnet.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
+func (t *testNPDUTransport) SendNPDU(_ context.Context, dst netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
 	if t.err != nil {
 		return t.err
 	}
@@ -48,14 +48,14 @@ func TestInvokeConfirmedCannotSend(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x09})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x09})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x01},
@@ -76,7 +76,7 @@ func TestInvokeConfirmedInboundSegmentAckFailsFast(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x0A})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0A})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestInvokeConfirmedInboundSegmentAckFailsFast(t *testing.T) {
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -105,7 +105,7 @@ func TestInvokeConfirmedInboundSegmentAckFailsFast(t *testing.T) {
 	}
 
 	segAck, err := npdu.NewLocalAPDU(
-		bacnet.NetworkPriorityNormal,
+		netprim.NetworkPriorityNormal,
 		false,
 		// Segment-ACK: 4 bytes — type|flags, invokeID, seqNum, windowSize.
 		[]byte{byte(PDUTypeSegmentACK << 4), byte(decoded.InvokeID), 0x00, 0x01},
@@ -135,7 +135,7 @@ func TestInvokeConfirmedInboundSegmentedComplexACKFailsFast(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x0B})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x0B})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestInvokeConfirmedInboundSegmentedComplexACKFailsFast(t *testing.T) {
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAB},
@@ -177,7 +177,7 @@ func TestInvokeConfirmedInboundSegmentedComplexACKFailsFast(t *testing.T) {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
 
-	segmentedAck, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, segmentedAckBytes)
+	segmentedAck, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, segmentedAckBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestInvokeConfirmedRoundTrip(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestInvokeConfirmedRoundTrip(t *testing.T) {
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -297,7 +297,7 @@ func TestInvokeConfirmedRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	ack, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ack, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -324,11 +324,11 @@ func TestInvokeConfirmedUnexpectedPeerDoesNotCompleteTransaction(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x21})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x21})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
-	otherPeer, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x22})
+	otherPeer, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x22})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestInvokeConfirmedUnexpectedPeerDoesNotCompleteTransaction(t *testing.T) {
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -360,7 +360,7 @@ func TestInvokeConfirmedUnexpectedPeerDoesNotCompleteTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	ack, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ack, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestInvokeConfirmedUnexpectedServiceChoiceDoesNotCompleteTransaction(t *tes
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x23})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x23})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestInvokeConfirmedUnexpectedServiceChoiceDoesNotCompleteTransaction(t *tes
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -428,7 +428,7 @@ func TestInvokeConfirmedUnexpectedServiceChoiceDoesNotCompleteTransaction(t *tes
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	wrongAck, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, wrongAckBytes)
+	wrongAck, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, wrongAckBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestInvokeConfirmedUnexpectedServiceChoiceDoesNotCompleteTransaction(t *tes
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	ack, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, ackBytes)
+	ack, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, ackBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestInvokeConfirmedRejectFromExpectedPeerCompletesTransaction(t *testing.T)
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x24})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x24})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestInvokeConfirmedRejectFromExpectedPeerCompletesTransaction(t *testing.T)
 	go func() {
 		confirm, err := ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 			Destination: dst,
-			Priority:    bacnet.NetworkPriorityNormal,
+			Priority:    netprim.NetworkPriorityNormal,
 			ServiceRequest: ConfirmedRequest{
 				ServiceChoice: ServiceChoiceReadProperty,
 				Payload:       []byte{0xAA},
@@ -505,7 +505,7 @@ func TestInvokeConfirmedRejectFromExpectedPeerCompletesTransaction(t *testing.T)
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	reject, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, rejectBytes)
+	reject, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, rejectBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -529,14 +529,14 @@ func TestInvokeConfirmedTimeout(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x02})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x02})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	_, err = ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 		},
@@ -553,14 +553,14 @@ func TestInvokeConfirmedRetriesThenTimeout(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x12})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x12})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	_, err = ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x01, 0x02},
@@ -598,7 +598,7 @@ func TestInboundConfirmedDispatch(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x03})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x03})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestInboundConfirmedDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestInboundConfirmedHandlerErrorSendsError(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x31})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x31})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -673,7 +673,7 @@ func TestInboundConfirmedHandlerErrorSendsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -713,7 +713,7 @@ func TestInboundConfirmedNoHandlerSendsReject(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x32})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x32})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -730,7 +730,7 @@ func TestInboundConfirmedNoHandlerSendsReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -774,7 +774,7 @@ func TestInboundConfirmedOversizedResponseSendsAbort(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x33})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x33})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -791,7 +791,7 @@ func TestInboundConfirmedOversizedResponseSendsAbort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -835,7 +835,7 @@ func buildSegmentACKNPDU(t *testing.T, invokeID InvokeID, sequenceNumber uint8, 
 		b0 |= 0x01
 	}
 
-	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{b0, byte(invokeID), sequenceNumber, windowSize})
+	pkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, false, []byte{b0, byte(invokeID), sequenceNumber, windowSize})
 	if err != nil {
 		t.Fatalf("buildSegmentACKNPDU: %v", err)
 	}
@@ -875,7 +875,7 @@ func TestASESegmentedConfirmedResponseHappyPath(t *testing.T) {
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x44})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x44})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -892,7 +892,7 @@ func TestASESegmentedConfirmedResponseHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -992,7 +992,7 @@ func TestASESegmentedConfirmedResponseInitialWindowSendsMultipleSegments(t *test
 		t.Fatalf("RegisterConfirmed returned error: %v", err)
 	}
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x45})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x45})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
@@ -1010,7 +1010,7 @@ func TestASESegmentedConfirmedResponseInitialWindowSendsMultipleSegments(t *test
 		t.Fatalf("encodeAPDU returned error: %v", err)
 	}
 
-	request, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, requestBytes)
+	request, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, requestBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU returned error: %v", err)
 	}
@@ -1073,14 +1073,14 @@ func TestSendUnconfirmed(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	if err := ase.SendUnconfirmed(context.Background(), UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityUrgent,
+		Priority:    netprim.NetworkPriorityUrgent,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x01, 0x02},
@@ -1090,8 +1090,8 @@ func TestSendUnconfirmed(t *testing.T) {
 	}
 
 	sent := <-transport.ch
-	if sent.packet.Priority() != bacnet.NetworkPriorityUrgent {
-		t.Fatalf("npdu priority = %v, want %v", sent.packet.Priority(), bacnet.NetworkPriorityUrgent)
+	if sent.packet.Priority() != netprim.NetworkPriorityUrgent {
+		t.Fatalf("npdu priority = %v, want %v", sent.packet.Priority(), netprim.NetworkPriorityUrgent)
 	}
 	decoded, err := decodeAPDU(sent.packet.APDUBytes())
 	if err != nil {
@@ -1117,14 +1117,14 @@ func TestBeginConfirmedServiceRequestAPDUSizeBoundary(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x51})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x51})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	_, err = ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x01},
@@ -1136,7 +1136,7 @@ func TestBeginConfirmedServiceRequestAPDUSizeBoundary(t *testing.T) {
 
 	_, err = ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x01, 0x02},
@@ -1159,14 +1159,14 @@ func TestSendUnconfirmedAPDUSizeBoundary(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x52})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x52})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	err = ase.SendUnconfirmed(context.Background(), UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x01},
@@ -1178,7 +1178,7 @@ func TestSendUnconfirmedAPDUSizeBoundary(t *testing.T) {
 
 	err = ase.SendUnconfirmed(context.Background(), UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x01, 0x02},
@@ -1195,14 +1195,14 @@ func TestBeginConfirmedServiceRequestRejectsUnconfirmedServiceChoice(t *testing.
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x40})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x40})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	_, err = ase.BeginConfirmedServiceRequest(context.Background(), ConfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: ConfirmedRequest{
 			ServiceChoice: ServiceChoiceWhoIs,
 			Payload:       []byte{0x01},
@@ -1219,14 +1219,14 @@ func TestSendUnconfirmedRejectsConfirmedServiceChoice(t *testing.T) {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
 
-	dst, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x41})
+	dst, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0x41})
 	if err != nil {
 		t.Fatalf("NewAddress returned error: %v", err)
 	}
 
 	err = ase.SendUnconfirmed(context.Background(), UnconfirmedRequestICI{
 		Destination: dst,
-		Priority:    bacnet.NetworkPriorityNormal,
+		Priority:    netprim.NetworkPriorityNormal,
 		ServiceRequest: UnconfirmedRequest{
 			ServiceChoice: ServiceChoiceReadProperty,
 			Payload:       []byte{0x01},
@@ -1270,9 +1270,9 @@ func TestOnInboundNPDUNetworkLayerMessageRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewASE returned error: %v", err)
 	}
-	src, _ := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0x01})
+	src, _ := netprim.NewAddress(netprim.LocalNetwork, []byte{0x01})
 
-	packet, err := npdu.NewNetworkLayerMessage(0x04, []byte{0x00, 0x01}, bacnet.NetworkPriorityNormal)
+	packet, err := npdu.NewNetworkLayerMessage(0x04, []byte{0x00, 0x01}, netprim.NetworkPriorityNormal)
 	if err != nil {
 		t.Fatalf("NewNetworkLayerMessage returned error: %v", err)
 	}
@@ -1310,7 +1310,7 @@ func buildSegmentedConfirmedRequestNPDU(
 	}
 	raw = append(raw, payload...)
 
-	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, raw)
+	pkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, raw)
 	if err != nil {
 		t.Fatalf("buildSegmentedConfirmedRequestNPDU: %v", err)
 	}
@@ -1333,7 +1333,7 @@ func TestASESegmentedConfirmedRequestHappyPath(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x01, 0x02, 0x03, 0x04}}
+	src := netprim.Address{MAC: []byte{0x01, 0x02, 0x03, 0x04}}
 	var receivedPayload []byte
 
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1413,7 +1413,7 @@ func TestASESegmentedConfirmedRequestNegotiatesWindowSize(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x11, 0x22}}
+	src := netprim.Address{MAC: []byte{0x11, 0x22}}
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		return ConfirmedResponseICI{Destination: ind.Source, InvokeID: ind.InvokeID}, nil
 	}); err != nil {
@@ -1463,7 +1463,7 @@ func TestASESegmentedConfirmedRequestNotSupported(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x0A, 0x0B}}
+	src := netprim.Address{MAC: []byte{0x0A, 0x0B}}
 	pkt := buildSegmentedConfirmedRequestNPDU(t, 1, 0, 1, true, ServiceChoiceReadProperty, []byte{0x01})
 
 	err = ase.OnInboundNPDU(context.Background(), src, pkt)
@@ -1510,7 +1510,7 @@ func TestASESegmentedConfirmedRequestOutOfOrder(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0xCC, 0xDD}}
+	src := netprim.Address{MAC: []byte{0xCC, 0xDD}}
 
 	var receivedPayload []byte
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1631,7 +1631,7 @@ func TestASESegmentedConfirmedRequestDuplicateFirstSegmentReACKsWithoutRedispatc
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x21, 0x22}}
+	src := netprim.Address{MAC: []byte{0x21, 0x22}}
 	handlerCalls := 0
 
 	err = ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
@@ -1701,7 +1701,7 @@ func TestASESegmentedConfirmedRequestExceedingMaxDuplicatesSendsAbort(t *testing
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x31, 0x32}}
+	src := netprim.Address{MAC: []byte{0x31, 0x32}}
 	handlerCalls := 0
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		handlerCalls++
@@ -1760,7 +1760,7 @@ func TestASESegmentedConfirmedRequestTimeout(t *testing.T) {
 		t.Fatalf("NewASE: %v", err)
 	}
 
-	src := bacnet.Address{MAC: []byte{0x0F, 0xF0}}
+	src := netprim.Address{MAC: []byte{0x0F, 0xF0}}
 	if err := ase.RegisterConfirmed(ServiceChoiceReadProperty, func(_ context.Context, ind ConfirmedIndicationICI) (ConfirmedResponseICI, error) {
 		return ConfirmedResponseICI{Destination: ind.Source, InvokeID: ind.InvokeID}, nil
 	}); err != nil {
@@ -1883,7 +1883,7 @@ func TestASEDuplicateConfirmedRequestDropped(t *testing.T) {
 	}
 	defer ase.Close()
 
-	src, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{0xDD})
+	src, err := netprim.NewAddress(netprim.LocalNetwork, []byte{0xDD})
 	if err != nil {
 		t.Fatalf("NewAddress error = %v", err)
 	}
@@ -1913,7 +1913,7 @@ func TestASEDuplicateConfirmedRequestDropped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encodeAPDU error = %v", err)
 	}
-	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, true, reqBytes)
+	pkt, err := npdu.NewLocalAPDU(netprim.NetworkPriorityNormal, true, reqBytes)
 	if err != nil {
 		t.Fatalf("NewLocalAPDU error = %v", err)
 	}

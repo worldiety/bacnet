@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/netprim"
 )
 
 func TestEncodeNetworkLayerMessageWire(t *testing.T) {
-	dnet := bacnet.NetworkNumber(16)
+	dnet := netprim.NetworkNumber(16)
 	whoIs, err := NewWhoIsRouterToNetworkMessage(&dnet)
 	if err != nil {
 		t.Fatalf("NewWhoIsRouterToNetworkMessage: %v", err)
@@ -141,7 +141,7 @@ func TestNetworkLayerMessageWireMatchesNPDURepresentation(t *testing.T) {
 		t.Fatalf("EncodeNetworkLayerMessageWire: %v", err)
 	}
 
-	n, err := NewNetworkLayerNPDUFromMessage(NPCI{Priority: bacnet.NetworkPriorityNormal}, message)
+	n, err := NewNetworkLayerNPDUFromMessage(NPCI{Priority: netprim.NetworkPriorityNormal}, message)
 	if err != nil {
 		t.Fatalf("NewNetworkLayerNPDUFromMessage: %v", err)
 	}

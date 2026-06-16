@@ -1,6 +1,10 @@
-package bacnet
+package netprim
 
-import "slices"
+import (
+	"slices"
+
+	"go.wdy.de/bacnet/common/errors"
+)
 
 // Address identifies a BACnet station on a local or remote network.
 type Address struct {
@@ -11,7 +15,7 @@ type Address struct {
 // NewAddress constructs an address and defensively copies the MAC bytes.
 func NewAddress(network NetworkNumber, mac []byte) (Address, error) {
 	if len(mac) > 255 {
-		return Address{}, NewValidationError("mac", len(mac), ErrInvalidMACAddress)
+		return Address{}, errors.NewValidationError("mac", len(mac), errors.ErrInvalidMACAddress)
 	}
 
 	cloned := make([]byte, len(mac))

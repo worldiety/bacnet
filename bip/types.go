@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/common/errors"
 )
 
 const (
@@ -115,7 +115,7 @@ type BVLCLength uint16
 
 func NewBVLCLength(length int) (BVLCLength, error) {
 	if length < 0 || length > math.MaxUint16 {
-		return 0, bacnet.NewValidationError("BVLCLength", length, ErrInvalidLength)
+		return 0, errors.NewValidationError("BVLCLength", length, ErrInvalidLength)
 	}
 
 	return BVLCLength(length), nil

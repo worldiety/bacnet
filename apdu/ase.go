@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"go.wdy.de/bacnet"
+	errors2 "go.wdy.de/bacnet/common/errors"
+	"go.wdy.de/bacnet/common/log"
+	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -53,7 +55,7 @@ type ASEConfig struct {
 
 // NPDUTransport sends NPDUs to a BACnet peer.
 type NPDUTransport interface {
-	SendNPDU(ctx context.Context, dst bacnet.Address, packet npdu.NetworkLayerProtocolDataUnit) error
+	SendNPDU(ctx context.Context, dst netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error
 }
 
 // ConfirmedHandler processes confirmed requests and returns a response ICI.
@@ -68,7 +70,7 @@ type ASE interface {
 	RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error
 	BeginConfirmedServiceRequest(ctx context.Context, req ConfirmedRequestICI) (ConfirmICI, error)
 	SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI) error
-	OnInboundNPDU(ctx context.Context, src bacnet.Address, packet npdu.NetworkLayerProtocolDataUnit) error
+	OnInboundNPDU(ctx context.Context, src netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error
 	Close() error
 }
 
@@ -105,7 +107,7 @@ type aseClientImpl struct {
 // on the server path; unlike transaction it does not model a client-side invoke lifecycle.
 type segmentedServerEntry struct {
 	machine      *confirmedServerMachine
-	priority     bacnet.NetworkPriority
+	priority     netprim.NetworkPriority
 	firstInbound inboundAPDU // first segment; carries invokeID, serviceChoice, maxAPDU, etc.
 	expiresAt    time.Time
 }
@@ -114,8 +116,8 @@ type segmentedServerEntry struct {
 // response while waiting for Segment-ACK PDUs from the requester.
 type segmentedServerResponseEntry struct {
 	machine   *confirmedServerMachine
-	priority  bacnet.NetworkPriority
-	src       bacnet.Address
+	priority  netprim.NetworkPriority
+	src       netprim.Address
 	expiresAt time.Time
 }
 
@@ -123,14 +125,14 @@ type segmentedServerKey string
 
 // segmentedServerKeyFor returns the map key for an in-progress segmented
 // server transaction identified by its source address and invoke ID.
-func segmentedServerKeyFor(src bacnet.Address, id InvokeID) segmentedServerKey {
+func segmentedServerKeyFor(src netprim.Address, id InvokeID) segmentedServerKey {
 	return segmentedServerKey(fmt.Sprintf("%d:%x:%d", id, src.MACBytes(), src.Network))
 }
 
 type transaction struct {
 	done                  chan transactionResult
 	stateMachine          protocolStateMachine
-	expectedPeer          bacnet.Address
+	expectedPeer          netprim.Address
 	expectedServiceChoice ServiceChoice
 }
 
@@ -184,7 +186,7 @@ func inboundAPDUCarriesServiceContext(pduType PDUType) bool {
 	}
 }
 
-func (t transaction) matchesInboundAPDU(src bacnet.Address, in inboundAPDU) bool {
+func (t transaction) matchesInboundAPDU(src netprim.Address, in inboundAPDU) bool {
 	if !t.expectedPeer.Equal(src) {
 		return false
 	}
@@ -203,19 +205,19 @@ func NewASE(cfg ASEConfig, transport NPDUTransport) (ASE, error) {
 	}
 
 	if cfg.InvokeTimeout <= 0 {
-		return nil, bacnet.NewValidationError("invoke timeout", cfg.InvokeTimeout, ErrInvalidASEConfig)
+		return nil, errors2.NewValidationError("invoke timeout", cfg.InvokeTimeout, ErrInvalidASEConfig)
 	}
 
 	if cfg.MaxConcurrentInvokes <= 0 {
-		return nil, bacnet.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
+		return nil, errors2.NewValidationError("max concurrent invokes", cfg.MaxConcurrentInvokes, ErrInvalidASEConfig)
 	}
 
 	if cfg.PreferredWindowSize > 127 {
-		return nil, bacnet.NewValidationError("preferred window size", cfg.PreferredWindowSize, ErrInvalidASEConfig)
+		return nil, errors2.NewValidationError("preferred window size", cfg.PreferredWindowSize, ErrInvalidASEConfig)
 	}
 
 	if cfg.SegmentedRequestTimeout < 0 {
-		return nil, bacnet.NewValidationError("segmented request timeout", cfg.SegmentedRequestTimeout, ErrInvalidASEConfig)
+		return nil, errors2.NewValidationError("segmented request timeout", cfg.SegmentedRequestTimeout, ErrInvalidASEConfig)
 	}
 
 	// Default PreferredWindowSize to 1 (minimum value mandated by the standard).
@@ -301,11 +303,11 @@ func (a *aseImpl) Close() error {
 // RegisterConfirmed registers a confirmed request handler for a service choice.
 func (a *aseImpl) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors2.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	if !IsConfirmedServiceChoice(choice) {
-		return bacnet.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
+		return errors2.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
 	}
 
 	a.mu.Lock()
@@ -321,11 +323,11 @@ func (a *aseImpl) RegisterConfirmed(choice ServiceChoice, handler ConfirmedHandl
 // RegisterUnconfirmed registers an unconfirmed request handler for a service choice.
 func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedHandler) error {
 	if handler == nil {
-		return bacnet.NewValidationError("handler", nil, ErrHandlerNotFound)
+		return errors2.NewValidationError("handler", nil, ErrHandlerNotFound)
 	}
 
 	if !IsUnconfirmedServiceChoice(choice) {
-		return bacnet.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
+		return errors2.NewValidationError("service choice", choice, ErrInvalidServiceChoice)
 	}
 
 	a.mu.Lock()
@@ -341,11 +343,11 @@ func (a *aseImpl) RegisterUnconfirmed(choice ServiceChoice, handler UnconfirmedH
 // BeginConfirmedServiceRequest sends a confirmed request and waits for B-X.confirm.
 func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req ConfirmedRequestICI) (ConfirmICI, error) {
 	if !req.Priority.Valid() {
-		return ConfirmICI{}, bacnet.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
+		return ConfirmICI{}, errors2.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
 	}
 
 	if !IsConfirmedServiceChoice(req.ServiceRequest.ServiceChoice) {
-		return ConfirmICI{}, bacnet.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
+		return ConfirmICI{}, errors2.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
 	}
 
 	if a.segmentationRequiredConfirmed(len(req.ServiceRequest.Payload)) {
@@ -366,7 +368,7 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 
 	output, err := tx.stateMachine.Handle(machineEventSendConfirmedRequest, machineInput{ConfirmedRequest: &req.ServiceRequest})
 	if err != nil {
-		bacnet.Logger.Error("apdu begin confirmed state-machine handle", "error", err)
+		log.Logger.Error("apdu begin confirmed state-machine handle", "error", err)
 		a.finishClientTransaction(txID)
 		return ConfirmICI{}, err
 	}
@@ -379,13 +381,13 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 	for {
 		packet, err := buildOutboundNPDU(req.Destination, req.Priority, true, *output.OutboundAPDU)
 		if err != nil {
-			bacnet.Logger.Error("apdu begin confirmed build outbound npdu", "error", err)
+			log.Logger.Error("apdu begin confirmed build outbound npdu", "error", err)
 			a.finishClientTransaction(txID)
 			return ConfirmICI{}, err
 		}
 
 		if err := a.transport.SendNPDU(ctx, req.Destination, packet); err != nil {
-			bacnet.Logger.Error("apdu begin confirmed send npdu", "error", err)
+			log.Logger.Error("apdu begin confirmed send npdu", "error", err)
 			wrapped := fmt.Errorf("%w: %v", ErrTransportFailure, err)
 			if tx.stateMachine != nil {
 				if out, smErr := tx.stateMachine.Handle(machineEventCannotSend, machineInput{Cause: wrapped}); smErr == nil && out.Confirm != nil {
@@ -403,7 +405,7 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 			timer.Stop()
 			if tx.stateMachine != nil {
 				if _, closeErr := tx.stateMachine.Handle(machineEventClose, machineInput{}); closeErr != nil {
-					bacnet.Logger.Warn("apdu begin confirmed close state-machine ignored", "error", closeErr, "invoke_id", txID)
+					log.Logger.Warn("apdu begin confirmed close state-machine ignored", "error", closeErr, "invoke_id", txID)
 				}
 			}
 			a.finishClientTransaction(txID)
@@ -416,7 +418,7 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 
 			timeoutOut, smErr := tx.stateMachine.Handle(machineEventTimeout, machineInput{})
 			if smErr != nil {
-				bacnet.Logger.Error("apdu begin confirmed timeout state-machine handle", "error", smErr)
+				log.Logger.Error("apdu begin confirmed timeout state-machine handle", "error", smErr)
 				a.finishClientTransaction(txID)
 				return ConfirmICI{}, smErr
 			}
@@ -452,11 +454,11 @@ func (a *aseImpl) BeginConfirmedServiceRequest(ctx context.Context, req Confirme
 // SendUnconfirmed sends an unconfirmed request.
 func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI) error {
 	if !req.Priority.Valid() {
-		return bacnet.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
+		return errors2.NewValidationError("priority", req.Priority, ErrInvalidASEConfig)
 	}
 
 	if !IsUnconfirmedServiceChoice(req.ServiceRequest.ServiceChoice) {
-		return bacnet.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
+		return errors2.NewValidationError("service choice", req.ServiceRequest.ServiceChoice, ErrInvalidServiceChoice)
 	}
 	if a.segmentationRequiredUnconfirmed(len(req.ServiceRequest.Payload)) {
 		return ErrSegmentationNotSupported
@@ -467,7 +469,7 @@ func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI
 	})
 	output, err := machine.Handle(machineEventSendUnconfirmedRequest, machineInput{UnconfirmedRequest: &req.ServiceRequest})
 	if err != nil {
-		bacnet.Logger.Error("apdu send unconfirmed state-machine handle", "error", err)
+		log.Logger.Error("apdu send unconfirmed state-machine handle", "error", err)
 		return err
 	}
 
@@ -477,11 +479,11 @@ func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI
 
 	packet, err := buildOutboundNPDU(req.Destination, req.Priority, false, *output.OutboundAPDU)
 	if err != nil {
-		bacnet.Logger.Error("apdu send unconfirmed build outbound npdu", "error", err)
+		log.Logger.Error("apdu send unconfirmed build outbound npdu", "error", err)
 		return err
 	}
 	if err := a.transport.SendNPDU(ctx, req.Destination, packet); err != nil {
-		bacnet.Logger.Error("apdu send unconfirmed transport send", "error", err)
+		log.Logger.Error("apdu send unconfirmed transport send", "error", err)
 		return fmt.Errorf("%w: %v", ErrTransportFailure, err)
 	}
 	return nil
@@ -492,16 +494,16 @@ func (a *aseImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI
 // Ownership note: packet.APDUBytes() is the NPDU->APDU ingress boundary and
 // already returns a defensive copy. The APDU package then passes that slice
 // through internal state-machine and dispatch paths without re-cloning.
-func (a *aseImpl) OnInboundNPDU(ctx context.Context, src bacnet.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
+func (a *aseImpl) OnInboundNPDU(ctx context.Context, src netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error {
 	if !packet.Valid() {
-		return bacnet.NewValidationError("npdu", packet, ErrDecodeFailure)
+		return errors2.NewValidationError("npdu", packet, ErrDecodeFailure)
 	}
 	if packet.IsNetworkLayerMessage() {
 		return ErrInvalidPDUType
 	}
 
 	apduBytes := packet.APDUBytes()
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"apdu inbound npdu",
 		"src_network", src.Network,
 		"src_mac_length", len(src.MACBytes()),
@@ -511,11 +513,11 @@ func (a *aseImpl) OnInboundNPDU(ctx context.Context, src bacnet.Address, packet 
 
 	decoded, err := decodeAPDU(apduBytes)
 	if err != nil {
-		bacnet.Logger.Error("apdu inbound decode apdu", "error", err)
+		log.Logger.Error("apdu inbound decode apdu", "error", err)
 		return fmt.Errorf("%w: %v", ErrDecodeFailure, err)
 	}
 
-	bacnet.Logger.Debug(
+	log.Logger.Debug(
 		"apdu inbound decode success",
 		"pdu_type", decoded.Type,
 		"invoke_id", decoded.InvokeID,
@@ -539,12 +541,12 @@ func (a *aseImpl) OnInboundNPDU(ctx context.Context, src bacnet.Address, packet 
 	case PDUTypeSimpleACK, PDUTypeComplexACK, PDUTypeError, PDUTypeReject, PDUTypeAbort:
 		return a.completeTransaction(ctx, src, packet.Priority(), decoded)
 	default:
-		return bacnet.NewValidationError("pdu type", decoded.Type, ErrInvalidPDUType)
+		return errors2.NewValidationError("pdu type", decoded.Type, ErrInvalidPDUType)
 	}
 }
 
 func (a *aseImpl) startTransaction(
-	expectedPeer bacnet.Address,
+	expectedPeer netprim.Address,
 	expectedServiceChoice ServiceChoice,
 	requestPayloadLength int,
 	segmentation SegmentationSupport,
@@ -583,7 +585,7 @@ func (a *aseImpl) startTransaction(
 				maxRetries:           transactionRetryCount(a.cfg.APDURetries),
 				requestPayloadLength: requestPayloadLength,
 			}),
-			expectedPeer: bacnet.Address{
+			expectedPeer: netprim.Address{
 				Network: expectedPeer.Network,
 				MAC:     slices.Clone(expectedPeer.MAC),
 			},
@@ -612,7 +614,7 @@ func (a *aseImpl) segmentExchangeTimeout() time.Duration {
 	return a.cfg.InvokeTimeout
 }
 
-func (a *aseImpl) syncSegmentedServerResponseEntry(src bacnet.Address, priority bacnet.NetworkPriority, machine *confirmedServerMachine) {
+func (a *aseImpl) syncSegmentedServerResponseEntry(src netprim.Address, priority netprim.NetworkPriority, machine *confirmedServerMachine) {
 	key := segmentedServerKeyFor(src, machine.variables.invokeID)
 
 	a.mu.Lock()
@@ -634,12 +636,12 @@ func (a *aseImpl) syncSegmentedServerResponseEntry(src bacnet.Address, priority 
 	a.outboundSegmentedServerEntries[key] = &segmentedServerResponseEntry{
 		machine:   machine,
 		priority:  priority,
-		src:       bacnet.Address{Network: src.Network, MAC: slices.Clone(src.MAC)},
+		src:       netprim.Address{Network: src.Network, MAC: slices.Clone(src.MAC)},
 		expiresAt: expiresAt,
 	}
 }
 
-func (a *aseImpl) handleSegmentACK(ctx context.Context, src bacnet.Address, in inboundAPDU) (bool, error) {
+func (a *aseImpl) handleSegmentACK(ctx context.Context, src netprim.Address, in inboundAPDU) (bool, error) {
 	a.mu.Lock()
 	_, clientOK := a.clientTransactions[in.InvokeID]
 	_, responseOK := a.outboundSegmentedServerEntries[segmentedServerKeyFor(src, in.InvokeID)]
@@ -659,7 +661,7 @@ func (a *aseImpl) handleSegmentACK(ctx context.Context, src bacnet.Address, in i
 	return true, a.handleSegmentedServerResponseACK(ctx, src, in)
 }
 
-func (a *aseImpl) handleSegmentedServerResponseACK(ctx context.Context, src bacnet.Address, in inboundAPDU) error {
+func (a *aseImpl) handleSegmentedServerResponseACK(ctx context.Context, src netprim.Address, in inboundAPDU) error {
 	key := segmentedServerKeyFor(src, in.InvokeID)
 
 	a.mu.Lock()
@@ -707,7 +709,7 @@ func (a *aseImpl) handleSegmentedServerResponseACK(ctx context.Context, src bacn
 	return nil
 }
 
-func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	if in.SegmentedMessage {
 		return a.handleSegmentedConfirmedRequest(ctx, src, priority, in)
 	}
@@ -719,13 +721,13 @@ func (a *aseImpl) handleConfirmedRequest(ctx context.Context, src bacnet.Address
 //
 // Duplicate requests (same src + invokeID) that arrive while the handler is still
 // running are silently dropped per §5.4.4 (ignorance policy).
-func (a *aseImpl) handleUnsegmentedConfirmedRequest(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) handleUnsegmentedConfirmedRequest(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	key := segmentedServerKeyFor(src, in.InvokeID)
 
 	a.mu.Lock()
 	if _, inFlight := a.inFlightServerRequests[key]; inFlight {
 		a.mu.Unlock()
-		bacnet.Logger.Debug(
+		log.Logger.Debug(
 			"apdu confirmed duplicate request dropped",
 			"invoke_id", in.InvokeID,
 			"service_choice", in.ServiceChoice,
@@ -765,7 +767,7 @@ func (a *aseImpl) handleUnsegmentedConfirmedRequest(ctx context.Context, src bac
 
 // handleSegmentedConfirmedRequest routes the first segment of a segmented request
 // to startSegmentedReceive and continuation segments to continueSegmentedReceive.
-func (a *aseImpl) handleSegmentedConfirmedRequest(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) handleSegmentedConfirmedRequest(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	if in.SequenceNumber == 0 {
 		return a.startSegmentedReceive(ctx, src, priority, in)
 	}
@@ -779,7 +781,7 @@ func (a *aseImpl) handleSegmentedConfirmedRequest(ctx context.Context, src bacne
 // sent immediately.  Otherwise, a server machine is created, the first segment is
 // buffered, a Segment-ACK is sent if required, and the entry is stored for
 // subsequent segments.
-func (a *aseImpl) startSegmentedReceive(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) startSegmentedReceive(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	key := segmentedServerKeyFor(src, in.InvokeID)
 
 	a.mu.Lock()
@@ -887,7 +889,7 @@ func (a *aseImpl) startSegmentedReceive(ctx context.Context, src bacnet.Address,
 // the existing server machine for that (src, invokeID) pair.
 //
 // Returns ErrUnexpectedPDU when no matching segmented transaction is found.
-func (a *aseImpl) continueSegmentedReceive(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) continueSegmentedReceive(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	key := segmentedServerKeyFor(src, in.InvokeID)
 
 	a.mu.Lock()
@@ -985,7 +987,7 @@ func (a *aseImpl) assembleInboundAPDU(firstSeg inboundAPDU, machine *confirmedSe
 // request and sends the terminal response APDU back to the peer.
 //
 // The machine must already be in machineStateAwaitResponse when this is called.
-func (a *aseImpl) dispatchToHandler(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, machine *confirmedServerMachine, in inboundAPDU) error {
+func (a *aseImpl) dispatchToHandler(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, machine *confirmedServerMachine, in inboundAPDU) error {
 	a.mu.Lock()
 	handler, ok := a.confirmedHandlers[in.ServiceChoice]
 	a.mu.Unlock()
@@ -1014,14 +1016,14 @@ func (a *aseImpl) dispatchToHandler(ctx context.Context, src bacnet.Address, pri
 	if result.InvokeID != in.InvokeID {
 		return a.handleConfirmedServerFailure(
 			ctx, src, priority, machine,
-			bacnet.NewValidationError("invoke id", result.InvokeID, ErrInvalidASEConfig),
+			errors2.NewValidationError("invoke id", result.InvokeID, ErrInvalidASEConfig),
 			ConfirmedResponseTypeReject,
 		)
 	}
 	if !result.Destination.Equal(src) {
 		return a.handleConfirmedServerFailure(
 			ctx, src, priority, machine,
-			bacnet.NewValidationError("destination", result.Destination, ErrInvalidASEConfig),
+			errors2.NewValidationError("destination", result.Destination, ErrInvalidASEConfig),
 			ConfirmedResponseTypeReject,
 		)
 	}
@@ -1055,15 +1057,15 @@ func (a *aseImpl) dispatchToHandler(ctx context.Context, src bacnet.Address, pri
 
 func (a *aseImpl) handleConfirmedServerFailure(
 	ctx context.Context,
-	src bacnet.Address,
-	priority bacnet.NetworkPriority,
+	src netprim.Address,
+	priority netprim.NetworkPriority,
 	machine protocolStateMachine,
 	cause error,
 	responseType ConfirmedResponseType,
 ) error {
 	output, err := machine.Handle(machineEventHandlerError, machineInput{Cause: cause, HandlerResponseType: &responseType})
 	if err != nil {
-		bacnet.Logger.Error("apdu confirmed server failure state-machine handle", "error", err)
+		log.Logger.Error("apdu confirmed server failure state-machine handle", "error", err)
 		return err
 	}
 
@@ -1076,8 +1078,8 @@ func (a *aseImpl) handleConfirmedServerFailure(
 
 func (a *aseImpl) sendConfirmedServerOutput(
 	ctx context.Context,
-	src bacnet.Address,
-	priority bacnet.NetworkPriority,
+	src netprim.Address,
+	priority netprim.NetworkPriority,
 	machine protocolStateMachine,
 	output machineOutput,
 	event machineEvent,
@@ -1104,12 +1106,12 @@ func (a *aseImpl) sendConfirmedServerOutput(
 
 		packet, err := buildOutboundNPDU(src, priority, false, *out)
 		if err != nil {
-			bacnet.Logger.Error("apdu confirmed server output build outbound npdu", "error", err)
+			log.Logger.Error("apdu confirmed server output build outbound npdu", "error", err)
 			return err
 		}
 
 		if err := a.transport.SendNPDU(ctx, src, packet); err != nil {
-			bacnet.Logger.Error("apdu confirmed server output send npdu", "error", err)
+			log.Logger.Error("apdu confirmed server output send npdu", "error", err)
 			wrapped := fmt.Errorf("%w: %v", ErrTransportFailure, err)
 			_, _ = machine.Handle(machineEventCannotSend, machineInput{Cause: wrapped})
 			return wrapped
@@ -1156,7 +1158,7 @@ func segmentationSupportFromInboundConfirmedRequest(in inboundAPDU) Segmentation
 	return SegmentationSupportNo
 }
 
-func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	machine := newUnconfirmedServerMachineWithConfig(unconfirmedServerMachineConfig{
 		requestPayloadLength: len(in.Payload),
 	})
@@ -1186,7 +1188,7 @@ func (a *aseImpl) handleUnconfirmedRequest(ctx context.Context, src bacnet.Addre
 	return nil
 }
 
-func (a *aseImpl) completeTransaction(ctx context.Context, src bacnet.Address, priority bacnet.NetworkPriority, in inboundAPDU) error {
+func (a *aseImpl) completeTransaction(ctx context.Context, src netprim.Address, priority netprim.NetworkPriority, in inboundAPDU) error {
 	a.mu.Lock()
 	tx, ok := a.clientTransactions[in.InvokeID]
 	a.mu.Unlock()
@@ -1212,7 +1214,7 @@ func (a *aseImpl) completeTransaction(ctx context.Context, src bacnet.Address, p
 
 	event, err := machineEventForInboundTerminalPDU(in.Type)
 	if err != nil {
-		return bacnet.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
+		return errors2.NewValidationError("pdu type", in.Type, ErrInvalidPDUType)
 	}
 
 	// The machine builds the transactionResult from the inbound APDU so
@@ -1230,7 +1232,7 @@ func (a *aseImpl) completeTransaction(ctx context.Context, src bacnet.Address, p
 	return nil
 }
 
-func (a *aseImpl) sendClientAbortForUnsupportedSegmentation(ctx context.Context, dst bacnet.Address, priority bacnet.NetworkPriority, invokeID InvokeID) error {
+func (a *aseImpl) sendClientAbortForUnsupportedSegmentation(ctx context.Context, dst netprim.Address, priority netprim.NetworkPriority, invokeID InvokeID) error {
 	packet, err := buildOutboundNPDU(dst, priority, false, outboundAPDU{
 		Type:     PDUTypeAbort,
 		InvokeID: invokeID,
@@ -1247,7 +1249,7 @@ func (a *aseImpl) sendClientAbortForUnsupportedSegmentation(ctx context.Context,
 	return nil
 }
 
-func (a *aseImpl) failTransaction(src bacnet.Address, in inboundAPDU, event machineEvent, cause error) error {
+func (a *aseImpl) failTransaction(src netprim.Address, in inboundAPDU, event machineEvent, cause error) error {
 	a.mu.Lock()
 	tx, ok := a.clientTransactions[in.InvokeID]
 	a.mu.Unlock()
@@ -1312,7 +1314,7 @@ func (a *aseImpl) timedOutCollector() {
 		for _, entry := range expiredResponses {
 			output, err := entry.machine.Handle(machineEventTimeout, machineInput{Cause: ErrAPDUTimeout})
 			if err != nil {
-				bacnet.Logger.Warn(
+				log.Logger.Warn(
 					"apdu timed out collector machine timeout handle ignored",
 					"error", err,
 					"invoke_id", entry.machine.variables.invokeID,
@@ -1324,7 +1326,7 @@ func (a *aseImpl) timedOutCollector() {
 			}
 			if output.OutboundAPDU != nil {
 				if sendErr := a.sendConfirmedServerOutput(context.Background(), entry.src, entry.priority, entry.machine, output, machineEventTimeout); sendErr != nil {
-					bacnet.Logger.Warn(
+					log.Logger.Warn(
 						"apdu timed out collector send output ignored",
 						"error", sendErr,
 						"invoke_id", entry.machine.variables.invokeID,
@@ -1338,21 +1340,21 @@ func (a *aseImpl) timedOutCollector() {
 	}
 }
 
-func buildOutboundNPDU(dst bacnet.Address, priority bacnet.NetworkPriority, expectingReply bool, apdu outboundAPDU) (npdu.NetworkLayerProtocolDataUnit, error) {
+func buildOutboundNPDU(dst netprim.Address, priority netprim.NetworkPriority, expectingReply bool, apdu outboundAPDU) (npdu.NetworkLayerProtocolDataUnit, error) {
 	if !priority.Valid() {
-		return npdu.NetworkLayerProtocolDataUnit{}, bacnet.NewValidationError("priority", priority, ErrInvalidASEConfig)
+		return npdu.NetworkLayerProtocolDataUnit{}, errors2.NewValidationError("priority", priority, ErrInvalidASEConfig)
 	}
 
 	apduBytes, err := encodeAPDU(apdu)
 	if err != nil {
-		bacnet.Logger.Error("apdu build outbound encode apdu", "error", err)
+		log.Logger.Error("apdu build outbound encode apdu", "error", err)
 		return npdu.NetworkLayerProtocolDataUnit{}, fmt.Errorf("%w: %v", ErrEncodeFailure, err)
 	}
 
 	if dst.Network.IsLocal() {
 		packet, err := npdu.NewLocalAPDU(priority, expectingReply, apduBytes)
 		if err != nil {
-			bacnet.Logger.Error("apdu build outbound local npdu", "error", err)
+			log.Logger.Error("apdu build outbound local npdu", "error", err)
 			if errors.Is(err, npdu.ErrInvalidLength) {
 				return npdu.NetworkLayerProtocolDataUnit{}, fmt.Errorf("%w: %v", ErrEncodeFailure, err)
 			}
@@ -1373,7 +1375,7 @@ func buildOutboundNPDU(dst bacnet.Address, priority bacnet.NetworkPriority, expe
 	)
 
 	if err != nil {
-		bacnet.Logger.Error("apdu build outbound routed npdu", "error", err)
+		log.Logger.Error("apdu build outbound routed npdu", "error", err)
 		if errors.Is(err, npdu.ErrInvalidLength) || errors.Is(err, npdu.ErrInvalidPriority) {
 			return npdu.NetworkLayerProtocolDataUnit{}, fmt.Errorf("%w: %v", ErrEncodeFailure, err)
 		}

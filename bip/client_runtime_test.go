@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet"
 	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/common/types"
 	"go.wdy.de/bacnet/npdu"
 )
 
@@ -173,14 +173,14 @@ func TestClientRuntimeRunWritePropertyRoundTrip(t *testing.T) {
 		t.Fatalf("AddrPortToAddress returned error: %v", err)
 	}
 
-	objID, err := bacnet.NewObjectIdentifier(bacnet.ObjectTypeAnalogValue, 1)
+	objID, err := types.NewObjectIdentifier(types.ObjectTypeAnalogValue, 1)
 	if err != nil {
 		t.Fatalf("NewObjectIdentifier returned error: %v", err)
 	}
 
 	writeReq := apdu.WritePropertyRequest{
 		ObjectIdentifier:   objID,
-		PropertyIdentifier: bacnet.PropertyIdentifierPresentValue,
+		PropertyIdentifier: types.PropertyIdentifierPresentValue,
 		PropertyValue:      []byte{0x44, 0x20, 0x00, 0x00},
 	}
 
