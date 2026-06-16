@@ -2,8 +2,6 @@ package apdu
 
 import (
 	"context"
-
-	"go.wdy.de/bacnet"
 )
 
 // UserElement models a BACnet application-layer service user per clause 5.1 of
@@ -29,11 +27,11 @@ type UserElement interface {
 	// InvokeConfirmed executes the B-X.request → B-X.confirm exchange for a
 	// confirmed service. It blocks until the peer's response arrives, the
 	// configured invoke timeout elapses, or ctx is cancelled.
-	InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error)
+	InvokeConfirmed(ctx context.Context, req ConfirmedRequestICI) (ConfirmICI, error)
 
 	// SendUnconfirmed executes the B-X.request primitive for an unconfirmed
 	// service. No response is expected or awaited.
-	SendUnconfirmed(ctx context.Context, dst bacnet.Address, req UnconfirmedRequest) error
+	SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI) error
 
 	// HandleConfirmed registers a ConfirmedHandler to receive the B-X.indication
 	// primitive for the given confirmed service choice. The handler's return value
@@ -64,13 +62,13 @@ func NewUserElement(ase ASE) (UserElement, error) {
 }
 
 // InvokeConfirmed implements UserElement (B-X.request → B-X.confirm).
-func (u *userElementImpl) InvokeConfirmed(ctx context.Context, dst bacnet.Address, req ConfirmedRequest) (ConfirmedAck, error) {
-	return u.ase.InvokeConfirmed(ctx, dst, req)
+func (u *userElementImpl) InvokeConfirmed(ctx context.Context, req ConfirmedRequestICI) (ConfirmICI, error) {
+	return u.ase.BeginConfirmedServiceRequest(ctx, req)
 }
 
 // SendUnconfirmed implements UserElement (B-X.request, unconfirmed).
-func (u *userElementImpl) SendUnconfirmed(ctx context.Context, dst bacnet.Address, req UnconfirmedRequest) error {
-	return u.ase.SendUnconfirmed(ctx, dst, req)
+func (u *userElementImpl) SendUnconfirmed(ctx context.Context, req UnconfirmedRequestICI) error {
+	return u.ase.SendUnconfirmed(ctx, req)
 }
 
 // HandleConfirmed implements UserElement (B-X.indication → B-X.response registration).

@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"reflect"
 	"testing"
+	"time"
 
 	"go.wdy.de/bacnet"
 )
@@ -12,15 +13,21 @@ import (
 // multiWriteConn extends fakeDatagramConn to capture multiple outbound datagrams
 // and serve a pre-loaded queue of inbound responses.
 type multiWriteConn struct {
-	responses [][]byte // inbound: served in order on each ReadFromUDPAddrPort call
+	responses []queuedResponse // inbound: served in order on each ReadFromUDPAddrPort call
 	readIdx   int
 	readErr   error
+	deadline  time.Time
 
 	written []struct {
 		data []byte
 		addr netip.AddrPort
 	}
 	writeErr error
+}
+
+type queuedResponse struct {
+	data []byte
+	src  netip.AddrPort
 }
 
 func (m *multiWriteConn) ReadFromUDPAddrPort(p []byte) (int, netip.AddrPort, error) {
@@ -30,10 +37,10 @@ func (m *multiWriteConn) ReadFromUDPAddrPort(p []byte) (int, netip.AddrPort, err
 	if m.readIdx >= len(m.responses) {
 		return 0, netip.AddrPort{}, ErrReadFailure
 	}
-	src := m.responses[m.readIdx]
+	response := m.responses[m.readIdx]
 	m.readIdx++
-	n := copy(p, src)
-	return n, netip.AddrPort{}, nil
+	n := copy(p, response.data)
+	return n, response.src, nil
 }
 
 func (m *multiWriteConn) WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (int, error) {
@@ -50,6 +57,11 @@ func (m *multiWriteConn) WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (int,
 }
 
 func (m *multiWriteConn) Close() error { return nil }
+
+func (m *multiWriteConn) SetReadDeadline(t time.Time) error {
+	m.deadline = t
+	return nil
+}
 
 // helpers -----------------------------------------------------------------------
 
@@ -80,7 +92,7 @@ func encodedBVLCResult(t *testing.T, code BVLCResultCode) []byte {
 // NewDeviceIp4 ------------------------------------------------------------------
 
 func TestNewDeviceIp4(t *testing.T) {
-	conn := &multiWriteConn{responses: [][]byte{}}
+	conn := &multiWriteConn{responses: []queuedResponse{}}
 	type inputT struct {
 		conn DatagramConn
 		ttl  TTL
@@ -179,13 +191,94 @@ func TestSendLocalBroadcastWriteError(t *testing.T) {
 	}
 }
 
+// SendUnicast -------------------------------------------------------------------
+
+func TestSendUnicastDestination(t *testing.T) {
+	conn := &multiWriteConn{}
+	d := mustDeviceIp4(t, conn, 60)
+
+	dst := netip.MustParseAddrPort("192.168.1.20:47808")
+	msg, err := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, []byte{0x01, 0x00})
+	if err != nil {
+		t.Fatalf("NewOriginalUnicastNpdu: %v", err)
+	}
+
+	if err := d.SendUnicast(dst, *msg); err != nil {
+		t.Fatalf("SendUnicast: %v", err)
+	}
+
+	if len(conn.written) != 1 {
+		t.Fatalf("written datagrams = %d, want 1", len(conn.written))
+	}
+	if conn.written[0].addr != dst {
+		t.Errorf("dst = %v, want %v", conn.written[0].addr, dst)
+	}
+}
+
+func TestSendUnicastWireContents(t *testing.T) {
+	conn := &multiWriteConn{}
+	d := mustDeviceIp4(t, conn, 60)
+
+	npduPayload := []byte{0x01, 0x00, 0xAB}
+	msg, _ := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, npduPayload)
+	want, _ := msg.Encode()
+	dst := netip.MustParseAddrPort("192.168.1.5:47808")
+
+	if err := d.SendUnicast(dst, *msg); err != nil {
+		t.Fatalf("SendUnicast: %v", err)
+	}
+
+	got := conn.written[0].data
+	if len(got) != len(want) {
+		t.Fatalf("wire length = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("byte[%d] = 0x%02x, want 0x%02x", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSendUnicastWriteError(t *testing.T) {
+	conn := &multiWriteConn{writeErr: ErrWriteFailure}
+	d := mustDeviceIp4(t, conn, 60)
+
+	msg, _ := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, []byte{0x01})
+	err := d.SendUnicast(netip.MustParseAddrPort("10.0.0.1:47808"), *msg)
+	if !errors.Is(err, ErrWriteFailure) {
+		t.Fatalf("err = %v, want %v", err, ErrWriteFailure)
+	}
+}
+
+func TestSendUnicastInvalidDst(t *testing.T) {
+	tests := []struct {
+		name string
+		dst  netip.AddrPort
+	}{
+		{"zero value", netip.AddrPort{}},
+		{"ipv6", netip.MustParseAddrPort("[::1]:47808")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := &multiWriteConn{}
+			d := mustDeviceIp4(t, conn, 60)
+			msg, _ := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, []byte{0x01})
+			err := d.SendUnicast(tt.dst, *msg)
+			if !errors.Is(err, ErrInvalidIPAddress) {
+				t.Fatalf("err = %v, want %v", err, ErrInvalidIPAddress)
+			}
+		})
+	}
+}
+
 // RegisterAsForeignDevice -------------------------------------------------------
 
 var validBBMD = netip.MustParseAddr("192.168.1.1")
+var validBBMDPort = netip.AddrPortFrom(validBBMD, bacnet.IpDefaultUdpPort)
 
 func TestRegisterAsForeignDeviceSuccess(t *testing.T) {
 	conn := &multiWriteConn{
-		responses: [][]byte{encodedBVLCResult(t, ResultCodeSuccessfulCompletion)},
+		responses: []queuedResponse{{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: validBBMDPort}},
 	}
 	d := mustDeviceIp4(t, conn, 60)
 
@@ -197,7 +290,7 @@ func TestRegisterAsForeignDeviceSuccess(t *testing.T) {
 func TestRegisterAsForeignDeviceSendsCorrectTTL(t *testing.T) {
 	wantTTL := TTL(120)
 	conn := &multiWriteConn{
-		responses: [][]byte{encodedBVLCResult(t, ResultCodeSuccessfulCompletion)},
+		responses: []queuedResponse{{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: validBBMDPort}},
 	}
 	d := mustDeviceIp4(t, conn, wantTTL)
 
@@ -221,7 +314,7 @@ func TestRegisterAsForeignDeviceSendsCorrectTTL(t *testing.T) {
 
 func TestRegisterAsForeignDeviceSendsToCorrectBBMD(t *testing.T) {
 	conn := &multiWriteConn{
-		responses: [][]byte{encodedBVLCResult(t, ResultCodeSuccessfulCompletion)},
+		responses: []queuedResponse{{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: validBBMDPort}},
 	}
 	d := mustDeviceIp4(t, conn, 60)
 	if err := d.RegisterAsForeignDevice(validBBMD); err != nil {
@@ -236,7 +329,7 @@ func TestRegisterAsForeignDeviceSendsToCorrectBBMD(t *testing.T) {
 
 func TestRegisterAsForeignDeviceNakRejected(t *testing.T) {
 	conn := &multiWriteConn{
-		responses: [][]byte{encodedBVLCResult(t, ResultCodeRegisterForeignDeviceNak)},
+		responses: []queuedResponse{{data: encodedBVLCResult(t, ResultCodeRegisterForeignDeviceNak), src: validBBMDPort}},
 	}
 	d := mustDeviceIp4(t, conn, 60)
 
@@ -283,5 +376,34 @@ func TestRegisterAsForeignDeviceInvalidAddrError(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, ErrInvalidIPAddress)
 			}
 		})
+	}
+}
+
+func TestRegisterAsForeignDeviceIgnoresUnrelatedSenderWhenDeadlineSupported(t *testing.T) {
+	unrelated := netip.MustParseAddrPort("192.168.1.200:47808")
+	conn := &multiWriteConn{
+		responses: []queuedResponse{
+			{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: unrelated},
+			{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: validBBMDPort},
+		},
+	}
+	d := mustDeviceIp4(t, conn, 60)
+
+	if err := d.RegisterAsForeignDevice(validBBMD); err != nil {
+		t.Fatalf("RegisterAsForeignDevice: %v", err)
+	}
+}
+
+func TestRegisterAsForeignDeviceIgnoresMalformedFrameWhenDeadlineSupported(t *testing.T) {
+	conn := &multiWriteConn{
+		responses: []queuedResponse{
+			{data: []byte{0x81, 0x99, 0x00, 0x04}, src: validBBMDPort},
+			{data: encodedBVLCResult(t, ResultCodeSuccessfulCompletion), src: validBBMDPort},
+		},
+	}
+	d := mustDeviceIp4(t, conn, 60)
+
+	if err := d.RegisterAsForeignDevice(validBBMD); err != nil {
+		t.Fatalf("RegisterAsForeignDevice: %v", err)
 	}
 }

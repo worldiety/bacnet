@@ -63,45 +63,61 @@ func (m *unconfirmedServerMachine) State() machineState {
 //	AWAIT_RESPONSE + machineEventClose                   → ABORTED        / machineActionFailClosed
 //	COMPLETED      + machineEventClose                   → COMPLETED      / machineActionNone  (no-op)
 //	ABORTED        + machineEventClose                   → ABORTED        / machineActionNone  (no-op)
-func (m *unconfirmedServerMachine) Handle(event machineEvent) (machineAction, error) {
+func (m *unconfirmedServerMachine) Handle(event machineEvent, _ machineInput) (machineOutput, error) {
 	switch m.state {
 	case machineStateIdle:
-		switch event {
-		case machineEventInboundUnconfirmedRequest:
-			m.state = machineStateAwaitResponse
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInIdleState(event)
 	case machineStateAwaitResponse:
-		switch event {
-		case machineEventHandlerDone:
-			m.state = machineStateCompleted
-			return machineActionNone, nil
-		case machineEventHandlerError:
-			m.state = machineStateAborted
-			return machineActionNone, nil
-		case machineEventClose:
-			m.state = machineStateAborted
-			return machineActionFailClosed, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAwaitResponseState(event)
 	case machineStateCompleted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInCompletedState(event)
 	case machineStateAborted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAbortedState(event)
 	default:
-		return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedServerMachine) handleInIdleState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventInboundUnconfirmedRequest:
+		m.state = machineStateAwaitResponse
+		return machineOutput{action: machineActionNone}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedServerMachine) handleInAwaitResponseState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventHandlerDone:
+		m.state = machineStateCompleted
+		return machineOutput{action: machineActionNone}, nil
+	case machineEventHandlerError:
+		m.state = machineStateAborted
+		return machineOutput{action: machineActionNone}, nil
+	case machineEventClose:
+		m.state = machineStateAborted
+		return machineOutput{action: machineActionFailClosed}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedServerMachine) handleInCompletedState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventClose:
+		return machineOutput{action: machineActionNone}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedServerMachine) handleInAbortedState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventClose:
+		return machineOutput{action: machineActionNone}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
 	}
 }

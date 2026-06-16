@@ -3,20 +3,31 @@ package bip
 import (
 	"fmt"
 	"net/netip"
+	"time"
 
 	"go.wdy.de/bacnet"
 )
 
+const defaultForeignDeviceRegistrationResponseTimeout = 5 * time.Second
+
+type readDeadlineSetter interface {
+	SetReadDeadline(t time.Time) error
+}
+
 // DeviceIp4 defines the interface for a BACnet/IP device (non-BBMD).
 //
-// A BACnet/IP device can broadcast messages on its local subnet and optionally
-// register with a remote BBMD to participate in inter-subnet communication as
-// a foreign device (Annex J §J.5).
+// A BACnet/IP device can broadcast messages on its local subnet, send unicast
+// messages to a specific peer, and optionally register with a remote BBMD to
+// participate in inter-subnet communication as a foreign device (Annex J §J.5).
 type DeviceIp4 interface {
 	// SendLocalBroadcast encodes msg and delivers it to every BACnet node on
 	// the device's local IP subnet via the IPv4 limited-broadcast address
 	// (255.255.255.255) on the standard BACnet/IP UDP port.
 	SendLocalBroadcast(msg OriginalBroadcastNpdu) error
+
+	// SendUnicast encodes msg and delivers it to the single peer identified by dst.
+	// dst must be a valid IPv4 address-port pair.
+	SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) error
 
 	// RegisterAsForeignDevice sends a Register-Foreign-Device (0x05) request
 	// to the BBMD at bbmdAddr and waits for its BVLCResult response.
@@ -50,11 +61,33 @@ type deviceImpl struct {
 func (d *deviceImpl) SendLocalBroadcast(msg OriginalBroadcastNpdu) error {
 	raw, err := msg.Encode()
 	if err != nil {
+		bacnet.Logger.Error("bip device encode local broadcast", "error", err)
 		return fmt.Errorf("encode original-broadcast-npdu: %w", err)
 	}
 
 	dst := netip.AddrPortFrom(netip.MustParseAddr("255.255.255.255"), bacnet.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
+		bacnet.Logger.Error("bip device write local broadcast", "error", err, "dst", dst, "bytes", len(raw))
+		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
+	}
+	return nil
+}
+
+// SendUnicast implements DeviceIp4.
+// dst must be a valid IPv4 address-port pair; it is used directly as the UDP destination.
+func (d *deviceImpl) SendUnicast(dst netip.AddrPort, msg OriginalUnicastNpdu) error {
+	if !dst.IsValid() || !dst.Addr().Is4() {
+		return bacnet.NewValidationError("dst", dst, ErrInvalidIPAddress)
+	}
+
+	raw, err := msg.Encode()
+	if err != nil {
+		bacnet.Logger.Error("bip device encode unicast", "error", err, "dst", dst)
+		return fmt.Errorf("encode original-unicast-npdu: %w", err)
+	}
+
+	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
+		bacnet.Logger.Error("bip device write unicast", "error", err, "dst", dst, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
@@ -68,33 +101,64 @@ func (d *deviceImpl) RegisterAsForeignDevice(bbmdAddr netip.Addr) error {
 
 	req, err := NewRegisterForeignDevice(d.ttl)
 	if err != nil {
+		bacnet.Logger.Error("bip device build register foreign device", "error", err, "ttl", d.ttl)
 		return fmt.Errorf("build register-foreign-device: %w", err)
 	}
 
 	raw, err := req.Encode()
 	if err != nil {
+		bacnet.Logger.Error("bip device encode register foreign device", "error", err)
 		return fmt.Errorf("encode register-foreign-device: %w", err)
 	}
 
 	dst := netip.AddrPortFrom(bbmdAddr, bacnet.IpDefaultUdpPort)
 	if _, err := d.conn.WriteToUDPAddrPort(raw, dst); err != nil {
+		bacnet.Logger.Error("bip device write register foreign device", "error", err, "dst", dst, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 
-	// Read the BVLCResult response from the BBMD.
+	readDeadline, supportsReadDeadline := d.conn.(readDeadlineSetter)
+	if supportsReadDeadline {
+		if err := readDeadline.SetReadDeadline(time.Now().Add(defaultForeignDeviceRegistrationResponseTimeout)); err != nil {
+			bacnet.Logger.Error("bip device set read deadline", "error", err, "timeout", defaultForeignDeviceRegistrationResponseTimeout)
+			return fmt.Errorf("%w: %v", ErrReadFailure, err)
+		}
+		defer func() {
+			_ = readDeadline.SetReadDeadline(time.Time{})
+		}()
+	}
+
+	// Read the BVLCResult response from the requested BBMD.
 	buf := make([]byte, DefaultMaxDatagramSize)
-	n, _, err := d.conn.ReadFromUDPAddrPort(buf)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrReadFailure, err)
-	}
+	for {
+		n, src, err := d.conn.ReadFromUDPAddrPort(buf)
+		if err != nil {
+			bacnet.Logger.Error("bip device read register response", "error", err)
+			return fmt.Errorf("%w: %v", ErrReadFailure, err)
+		}
 
-	var result BVLCResult
-	if err := result.Decode(buf[:n]); err != nil {
-		return fmt.Errorf("decode bvlc-result from bbmd: %w", err)
-	}
+		if src != dst {
+			if !supportsReadDeadline {
+				bacnet.Logger.Error("bip device unexpected register response source", "error", ErrReadFailure, "src", src, "expected", dst)
+				return fmt.Errorf("%w: unexpected response source %v", ErrReadFailure, src)
+			}
+			continue
+		}
 
-	if result.ResultCode() != ResultCodeSuccessfulCompletion {
-		return fmt.Errorf("%w: %v", ErrRegistrationRejected, result.ResultCode())
+		var result BVLCResult
+		if err := result.Decode(buf[:n]); err != nil {
+			if !supportsReadDeadline {
+				bacnet.Logger.Error("bip device decode register response", "error", err, "bytes", n)
+				return fmt.Errorf("%w: decode bvlc-result from bbmd: %v", ErrReadFailure, err)
+			}
+			continue
+		}
+
+		if result.ResultCode() != ResultCodeSuccessfulCompletion {
+			bacnet.Logger.Error("bip device registration rejected", "error", ErrRegistrationRejected, "result_code", result.ResultCode())
+			return fmt.Errorf("%w: %v", ErrRegistrationRejected, result.ResultCode())
+		}
+
+		return nil
 	}
-	return nil
 }

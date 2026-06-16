@@ -1,92 +1,167 @@
 # bacnet
 
-`bacnet` is a lightweight Go foundation for building BACnet/IP applications.
-It currently provides root BACnet types and addressing primitives plus active
-`bip`, `apdu`, and `npdu` packages for BVLC framing, APDU orchestration,
-and NPDU encode/decode scaffolding.
+`bacnet` is a lightweight, pure-Go library for building BACnet/IP applications.
+It provides a complete BACnet/IP stack from BVLC framing through the application
+layer, including a typed client API for common BACnet services.
 
 ## Goals
 
-- Pure Go implementation
-- No cgo
+- Pure Go implementation — no cgo
 - Minimal dependencies (standard library only)
-- Implementation of BACnet application and network layers as defined in ANSI/ASHRAE 135-2024
-- BACnet implementation using IP in the link layer (BACnet/IP)
+- BACnet/IP focused (ANSI/ASHRAE 135-2024)
 - Relying on the OS for physical layer and transport (UDP)
-- Physical layer implementation is out of scope for this library
-- Easy to test and extend
+- Easy to test and extend via interface-first design
 
-## Current foundation
+## Package layout
 
-The current implementation includes:
-
-- Package documentation in `doc.go`
-- BACnet/IP and identifier constants in `constants.go`
-- Core BACnet types in `types.go`
-- Validation and sentinel errors in `errors.go`
-- Basic station/network addressing in `address.go`
-- `bip/` for BACnet/IP and BACnet/IP6 BVLC frame encode/decode, all Annex J BVLC function structs, UDP datagram transport, BBMD handling, and IPv4 foreign-device support
-- `apdu/` for interface-first ASE dispatch, confirmed invoke tracking, clause 5.4 state-machine scaffolding, and user-element wrappers
-- `npdu/` for BACnet NPDU encode/decode, routed/local APDU constructors, and network-layer-message constructors
-- `internal/util/` for shared defensive-copy helpers used across packages
-- Unit tests across the implemented packages
+| Package | Purpose |
+|---|---|
+| `.` (`bacnet`) | Constants, core types, errors, addressing primitives |
+| `bip/` | BACnet/IP BVLC frame encode/decode, UDP transport, BBMD, foreign-device registration, `ClientRuntime` end-to-end wiring |
+| `apdu/` | Application layer: ICI-first ASE dispatch, clause 5.4 state machines, typed `Client` with confirmed/unconfirmed services, discovery |
+| `npdu/` | NPDU encode/decode per clause 6.2.2, all standard network-layer-message types |
+| `npdu/router/` | Routing table and forwarding policy (connected + TTL-learned routes) |
+| `encoding/` | BACnet tag/value encoding primitives (tag parser, unsigned, object-id, character-string) |
+| `internal/util/` | Non-public shared helpers (e.g. `CopyPointersValue[T]`) |
+| `testdata/npdu/` | Wire conformance vectors for NLM encode/decode |
+| `examples/` | Deferred until the API is stable |
 
 ## Project structure
 
 ```text
 .
-├── Agents.md
-├── README.md
 ├── address.go
-├── address_test.go
 ├── constants.go
 ├── doc.go
 ├── errors.go
-├── errors_test.go
-├── go.mod
+├── logging.go
 ├── types.go
-├── types_test.go
-├── apdu/        (active: BACnet application layer scaffold)
-├── bip/         (active: BACnet/IP BVLC + transport + BBMD scaffold)
-├── encoding/    (planned: BACnet tag/value encoding)
-├── npdu/        (active: BACnet network layer scaffold)
-├── lpdu/        (planned: BACnet IP link layer scaffold)
-├── internal/    (active: non-public helpers; `internal/util` in active use)
-├── testdata/    (planned: packet fixtures)
+├── apdu/        (active: application layer, typed client, state machines)
+├── bip/         (active: BVLC framing, UDP transport, BBMD, ClientRuntime)
+├── encoding/    (active: BACnet tag/value encoding primitives)
+├── npdu/        (active: NPDU encode/decode, all NLM types)
+│   └── router/  (active: routing table and forwarding policy)
+├── internal/
+│   └── util/    (active: shared defensive-copy helpers)
+├── testdata/
+│   └── npdu/    (active: NLM wire conformance vectors)
 └── examples/    (deferred until API is stable)
 ```
 
-The current implementation includes the root `bacnet` package together with active
-`bip`, `apdu`, and `npdu` scaffolds. Planned directories remain extension points
-for additional BACnet/IP layers.
+## Features
 
-The project is in a prototype phase: APIs are usable for experimentation and tests,
-but may change as BACnet coverage expands.
+### BACnet/IP (bip/)
+
+- All 12 Annex J BVLC function types — full encode/decode
+- UDP datagram transport with configurable max datagram size
+- BBMD: broadcast distribution table (BDT) and foreign device table (FDT) management with TTL expiry
+- Foreign-device registration (local broadcast + unicast + foreign-device registration)
+- `ClientRuntime` — wires transport, stack, ASE, and client into a single runnable object
+
+### Application layer (apdu/)
+
+- ICI-first ASE dispatch for all 8 APDU PDU types
+- Confirmed request state machine: invoke-ID allocation, retry on timeout, ACK/Error/Reject/Abort handling
+- Server-side: segmented confirmed-request receive and segmented ComplexACK send (transmit window, Segment-ACK)
+- Duplicate confirmed-request suppression per §5.4.4
+- Typed `Client` interface covering:
+  - `WhoIs` / `WhoHas`
+  - `ReadProperty` / `ReadPropertyMultiple`
+  - `WriteProperty` / `WritePropertyMultiple`
+  - `ReadRange` (by position, sequence number, or time)
+  - `DeviceCommunicationControl` / `ReinitializeDevice`
+  - `SubscribeCOV` / `SubscribeCOVProperty`
+  - `Discover` — sends Who-Is and collects deduplicated I-Am responses within a time window
+  - COV notification handlers (unconfirmed and multiple)
+
+### Network layer (npdu/)
+
+- Full NPDU encode/decode per clause 6.2.2
+- Constructors for local, routed, sourced, and network-layer NPDUs
+- All 13 standard network-layer-message types (0x00–0x09, 0x12–0x13) plus proprietary range
+
+### Routing (npdu/router/)
+
+- Routing table with connected and TTL-learned routes
+- Forwarding decisions: local delivery, global broadcast fan-out, unicast forwarding
+- Hop-count decrement and expiry, SNET-based loop suppression
+- Router-busy policy, Reject-Message-To-Network response generation
+
+### Encoding (encoding/)
+
+- BACnet tag parser (short/extended tag numbers, all length forms)
+- Application and context primitive encode/decode
+- Unsigned, object-identifier, and ASCII character-string codecs
+
+## Known limitations
+
+- **Client-side segmented send**: not implemented — `ErrSegmentationNotSupported` is returned if the request exceeds the negotiated APDU size.
+- **Client-side segmented ComplexACK receive**: not implemented — a segmented ComplexACK received by the client triggers an Abort and returns `ErrSegmentationNotSupported`.
+- **Encoding coverage**: `encoding/` covers the types used by the current service surface. Raw/opaque `[]byte` is used for property values not yet decoded (e.g. Real, Double, Boolean, Date, Time, BitString).
 
 ## Example
+
+Discover all BACnet devices on the local network:
 
 ```go
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"net/netip"
+	"time"
 
-	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/bip"
 )
 
 func main() {
-	deviceID, err := bacnet.NewObjectIdentifier(bacnet.ObjectTypeDevice, 1234)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runtime, err := bip.NewClientRuntime(netip.MustParseAddr("0.0.0.0"), bip.ClientRuntimeConfig{
+		ASE: apdu.ASEConfig{
+			InvokeTimeout:        2 * time.Second,
+			APDURetries:          1,
+			MaxConcurrentInvokes: 8,
+		},
+	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+	defer runtime.Close()
+
+	go func() {
+		if err := runtime.Run(ctx); err != nil && err != context.Canceled {
+			log.Printf("runtime stopped: %v", err)
+		}
+	}()
+
+	broadcast, err := bip.AddrPortToAddress(netip.MustParseAddrPort("255.255.255.255:47808"))
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	addr, err := bacnet.NewAddress(bacnet.LocalNetwork, []byte{192, 168, 1, 10, 0xBA, 0xC0})
+	devices, err := runtime.Client().Discover(ctx, apdu.DiscoverRequest{
+		Destination: broadcast,
+		WhoIs:       apdu.WhoIsRequest{},
+		Window:      3 * time.Second,
+	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	fmt.Println(deviceID)
-	fmt.Println(addr.Network, addr.MACBytes())
+	for _, d := range devices {
+		fmt.Printf("device=%s source=%v max-apdu=%d segmentation=%s vendor=%d\n",
+			d.DeviceIdentifier,
+			d.Source,
+			d.MaxAPDULengthAccepted,
+			d.SegmentationSupported,
+			d.VendorID,
+		)
+	}
 }
 ```
 
@@ -97,21 +172,11 @@ go test ./...
 go test -coverprofile=coverage.out ./...
 ```
 
-## Next steps
+## Status
 
-Natural next additions for the library are:
+The project is in a prototype phase. The API is usable and exercised by tests,
+but may change as BACnet coverage expands. The module path is:
 
-1. Expanded BACnet tag/value encoding in `encoding/`
-2. BACnet IP link-layer support in `lpdu/`
-3. Expanded APDU wire compatibility for additional BACnet services
-4. Higher-level BACnet/IP client workflows for discovery and property reads
-
-## Notes
-
-The module currently uses the local module path declared in `go.mod`:
-
-```go
+```
 module go.wdy.de/bacnet
 ```
-
-If you plan to publish the library, update that module path to your repository URL.

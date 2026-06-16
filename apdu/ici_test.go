@@ -65,7 +65,7 @@ func TestMaxSegmentsAcceptedString(t *testing.T) {
 		{MaxSegments32, "32"},
 		{MaxSegments64, "64"},
 		{MaxSegmentsMoreThan64, "more-than-64"},
-		{MaxSegmentsAccepted(8), "max-segments(8)"},
+		{MaxSegmentsAccepted(8), "8"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -73,21 +73,6 @@ func TestMaxSegmentsAcceptedString(t *testing.T) {
 				t.Errorf("String() = %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestMaxSegmentsAcceptedValid(t *testing.T) {
-	// All values 0-7 must be valid.
-	for i := 0; i <= 7; i++ {
-		if !MaxSegmentsAccepted(i).Valid() {
-			t.Errorf("MaxSegmentsAccepted(%d).Valid() = false, want true", i)
-		}
-	}
-	// Values 8 and above must be invalid.
-	for _, v := range []MaxSegmentsAccepted{8, 9, 100, 255} {
-		if v.Valid() {
-			t.Errorf("MaxSegmentsAccepted(%d).Valid() = true, want false", v)
-		}
 	}
 }
 
@@ -102,7 +87,10 @@ func TestConfirmResultString(t *testing.T) {
 		{ConfirmResultError, "error"},
 		{ConfirmResultReject, "reject"},
 		{ConfirmResultAbort, "abort"},
-		{ConfirmResult(4), "confirm-result(4)"},
+		{ConfirmResultCannotSend, "cannot-send"},
+		{ConfirmResultUnexpectedPDU, "unexpected-pdu"},
+		{ConfirmResultSecurityError, "security-error"},
+		{ConfirmResult(7), "confirm-result(7)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -113,6 +101,137 @@ func TestConfirmResultString(t *testing.T) {
 	}
 }
 
+func TestConfirmedResponseTypeString(t *testing.T) {
+	tests := []struct {
+		r    ConfirmedResponseType
+		want string
+	}{
+		{ConfirmedResponseTypeACK, "ack"},
+		{ConfirmedResponseTypeError, "error"},
+		{ConfirmedResponseTypeReject, "reject"},
+		{ConfirmedResponseTypeAbort, "abort"},
+		{ConfirmedResponseType(9), "confirmed-response-type(9)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.r.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServiceChoiceString(t *testing.T) {
+	tests := []struct {
+		choice ServiceChoice
+		want   string
+	}{
+		{ServiceChoiceIAm, "i-am"},
+		{ServiceChoiceIHave, "i-have"},
+		{ServiceChoiceUnconfirmedCOVNotification, "unconfirmed-cov-notification"},
+		{ServiceChoiceUnconfirmedEventNotification, "unconfirmed-event-notification"},
+		{ServiceChoiceUnconfirmedPrivateTransfer, "unconfirmed-private-transfer"},
+		{ServiceChoiceUnconfirmedTextMessage, "unconfirmed-text-message"},
+		{ServiceChoiceWhoHas, "who-has"},
+		{ServiceChoiceWhoIs, "who-is"},
+		{ServiceChoiceTimeSynchronization, "time-synchronization"},
+		{ServiceChoiceUTCTimeSynchronization, "utc-time-synchronization"},
+		{ServiceChoiceWriteGroup, "write-group"},
+		{ServiceChoiceUnconfirmedCOVNotificationMultiple, "unconfirmed-cov-notification-multiple"},
+		{ServiceChoiceReadProperty, "read-property"},
+		{ServiceChoiceReadPropertyConditional, "read-property-conditional"},
+		{ServiceChoiceReadPropertyMultiple, "read-property-multiple"},
+		{ServiceChoiceWriteProperty, "write-property"},
+		{ServiceChoiceWritePropertyMultiple, "write-property-multiple"},
+		{ServiceChoiceVTOpen, "vt-open"},
+		{ServiceChoiceVTClose, "vt-close"},
+		{ServiceChoiceVTData, "vt-data"},
+		{ServiceChoiceAuthenticate, "authenticate"},
+		{ServiceChoiceRequestKey, "request-key"},
+		{ServiceChoiceReadRange, "read-range"},
+		{ServiceChoiceLifeSafetyOperation, "life-safety-operation"},
+		{ServiceChoiceGetEventInformation, "get-event-information"},
+		{ServiceChoiceSubscribeCOVPropertyMultiple, "subscribe-cov-property-multiple"},
+		{ServiceChoice(255), "service-choice(255)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.choice.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServiceChoiceClassifiers(t *testing.T) {
+	confirmed := []ServiceChoice{
+		ServiceChoiceSubscribeCOV,
+		ServiceChoiceReadProperty,
+		ServiceChoiceReadPropertyConditional,
+		ServiceChoiceReadPropertyMultiple,
+		ServiceChoiceWriteProperty,
+		ServiceChoiceWritePropertyMultiple,
+		ServiceChoiceDeviceCommunicationControl,
+		ServiceChoiceConfirmedPrivateTransfer,
+		ServiceChoiceConfirmedTextMessage,
+		ServiceChoiceReinitializeDevice,
+		ServiceChoiceVTOpen,
+		ServiceChoiceVTClose,
+		ServiceChoiceVTData,
+		ServiceChoiceAuthenticate,
+		ServiceChoiceRequestKey,
+		ServiceChoiceReadRange,
+		ServiceChoiceLifeSafetyOperation,
+		ServiceChoiceSubscribeCOVProperty,
+		ServiceChoiceGetEventInformation,
+		ServiceChoiceSubscribeCOVPropertyMultiple,
+	}
+	for _, choice := range confirmed {
+		t.Run("confirmed-"+choice.String(), func(t *testing.T) {
+			if !IsConfirmedServiceChoice(choice) {
+				t.Fatalf("IsConfirmedServiceChoice(%v) = false, want true", choice)
+			}
+			if choice != ServiceChoiceSubscribeCOV && IsUnconfirmedServiceChoice(choice) {
+				t.Fatalf("IsUnconfirmedServiceChoice(%v) = true, want false", choice)
+			}
+		})
+	}
+
+	unconfirmed := []ServiceChoice{
+		ServiceChoiceIAm,
+		ServiceChoiceIHave,
+		ServiceChoiceUnconfirmedCOVNotification,
+		ServiceChoiceUnconfirmedEventNotification,
+		ServiceChoiceUnconfirmedPrivateTransfer,
+		ServiceChoiceUnconfirmedTextMessage,
+		ServiceChoiceTimeSynchronization,
+		ServiceChoiceWhoHas,
+		ServiceChoiceWhoIs,
+		ServiceChoiceUTCTimeSynchronization,
+		ServiceChoiceWriteGroup,
+		ServiceChoiceUnconfirmedCOVNotificationMultiple,
+	}
+	for _, choice := range unconfirmed {
+		t.Run("unconfirmed-"+choice.String(), func(t *testing.T) {
+			if !IsUnconfirmedServiceChoice(choice) {
+				t.Fatalf("IsUnconfirmedServiceChoice(%v) = false, want true", choice)
+			}
+			if choice != ServiceChoiceUnconfirmedTextMessage && IsConfirmedServiceChoice(choice) {
+				t.Fatalf("IsConfirmedServiceChoice(%v) = true, want false", choice)
+			}
+		})
+	}
+
+	if IsConfirmedServiceChoice(ServiceChoice(255)) {
+		t.Fatal("IsConfirmedServiceChoice(255) = true, want false")
+	}
+	if IsUnconfirmedServiceChoice(ServiceChoice(255)) {
+		t.Fatal("IsUnconfirmedServiceChoice(255) = true, want false")
+	}
+}
+
 // --- ICI struct field access ---
 
 func TestConfirmedRequestICIFields(t *testing.T) {
@@ -120,7 +239,7 @@ func TestConfirmedRequestICIFields(t *testing.T) {
 	ici := ConfirmedRequestICI{
 		Destination:           dst,
 		MaxAPDULengthAccepted: 1476,
-		SegmentationSupported: SegmentationBoth,
+		SegmentationSupported: SegmentationSupportBoth,
 		MaxSegmentsAccepted:   MaxSegments16,
 		Priority:              bacnet.NetworkPriorityUrgent,
 		ServiceRequest: ConfirmedRequest{
@@ -132,18 +251,19 @@ func TestConfirmedRequestICIFields(t *testing.T) {
 	if !ici.Priority.Valid() {
 		t.Error("Priority.Valid() = false, want true")
 	}
-	if !ici.MaxSegmentsAccepted.Valid() {
-		t.Error("MaxSegmentsAccepted.Valid() = false, want true")
-	}
+
 	if ici.MaxAPDULengthAccepted != 1476 {
 		t.Errorf("MaxAPDULengthAccepted = %d, want 1476", ici.MaxAPDULengthAccepted)
 	}
-	if ici.SegmentationSupported != SegmentationBoth {
-		t.Errorf("SegmentationSupported = %v, want %v", ici.SegmentationSupported, SegmentationBoth)
+
+	if ici.SegmentationSupported != SegmentationSupportBoth {
+		t.Errorf("SegmentationSupported = %v, want %v", ici.SegmentationSupported, SegmentationSupportBoth)
 	}
+
 	if ici.ServiceRequest.ServiceChoice != ServiceChoiceReadProperty {
 		t.Errorf("ServiceChoice = %v, want %v", ici.ServiceRequest.ServiceChoice, ServiceChoiceReadProperty)
 	}
+
 	if len(ici.ServiceRequest.Payload) != 2 {
 		t.Errorf("Payload length = %d, want 2", len(ici.ServiceRequest.Payload))
 	}
@@ -174,7 +294,7 @@ func TestConfirmedIndicationICIDataExpectingReply(t *testing.T) {
 		Source:                src,
 		InvokeID:              InvokeID(42),
 		MaxAPDULengthAccepted: 1476,
-		SegmentationSupported: SegmentationNo,
+		SegmentationSupported: SegmentationSupportNo,
 		MaxSegmentsAccepted:   MaxSegmentsUnspecified,
 		Priority:              bacnet.NetworkPriorityNormal,
 		DataExpectingReply:    true, // always true for confirmed services
@@ -219,15 +339,15 @@ func TestConfirmedResponseICIFields(t *testing.T) {
 	ici := ConfirmedResponseICI{
 		Destination:           dst,
 		InvokeID:              InvokeID(7),
-		SegmentationSupported: SegmentationBoth,
+		SegmentationSupported: SegmentationSupportBoth,
 		ServiceResponse:       ServiceResult{Payload: []byte{0x42, 0x43}},
 	}
 
 	if ici.InvokeID != 7 {
 		t.Errorf("InvokeID = %d, want 7", ici.InvokeID)
 	}
-	if ici.SegmentationSupported != SegmentationBoth {
-		t.Errorf("SegmentationSupported = %v, want %v", ici.SegmentationSupported, SegmentationBoth)
+	if ici.SegmentationSupported != SegmentationSupportBoth {
+		t.Errorf("SegmentationSupported = %v, want %v", ici.SegmentationSupported, SegmentationSupportBoth)
 	}
 	if len(ici.ServiceResponse.Payload) != 2 || ici.ServiceResponse.Payload[0] != 0x42 {
 		t.Errorf("ServiceResponse.Payload = %v, want [0x42 0x43]", ici.ServiceResponse.Payload)
@@ -282,7 +402,7 @@ func TestNetworkPriorityStringFallback(t *testing.T) {
 
 func TestMaxSegmentsAcceptedStringFallback(t *testing.T) {
 	got := MaxSegmentsAccepted(8).String()
-	want := "max-segments(8)"
+	want := "8"
 	if got != want {
 		t.Errorf("String() = %q, want %q", got, want)
 	}

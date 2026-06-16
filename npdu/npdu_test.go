@@ -73,18 +73,23 @@ func TestValid(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "local APDU empty payload",
+			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01},
+			want: true,
+		},
+		{
 			name: "NL message flag but messageType nil",
 			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: isNetworkLayerMessageMask},
 			want: false,
 		},
 		{
 			name: "standard NL message without vendorID",
-			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: isNetworkLayerMessageMask, messageType: msgType(0x01)},
+			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: isNetworkLayerMessageMask, messageType: msgType(0x12)},
 			want: true,
 		},
 		{
 			name: "standard NL message with spurious vendorID",
-			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: isNetworkLayerMessageMask, messageType: msgType(0x01), vendorId: vendorID(0x1234)},
+			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: isNetworkLayerMessageMask, messageType: msgType(0x12), vendorId: vendorID(0x1234)},
 			want: false,
 		},
 		{
@@ -121,6 +126,11 @@ func TestValid(t *testing.T) {
 			name: "dst specifier broadcast (dlen=0, dadr=nil)",
 			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: destinationSpecifierMask, dnet: dnet(0xFFFF), dlen: dlen(0), hopCount: hopCount(255), apdu: []byte{0x10}},
 			want: true,
+		},
+		{
+			name: "dst specifier local network DNET zero",
+			n:    &NetworkLayerProtocolDataUnit{protocolVersion: 0x01, flags: destinationSpecifierMask, dnet: dnet(0), dlen: dlen(0), hopCount: hopCount(255), apdu: []byte{0x10}},
+			want: false,
 		},
 		{
 			name: "dst specifier broadcast with spurious dadr",
@@ -263,15 +273,9 @@ func TestEncodeRoutedUnicast(t *testing.T) {
 //	0x99 = SADR
 //	0x10 = APDU
 func TestEncodeWithSourceSpecifier(t *testing.T) {
-	snet := OriginalSourceNetworkNumber(2)
-	slenVal := OriginalSourceNetworkNumberMacAddressLength(1)
-	n := &NetworkLayerProtocolDataUnit{
-		protocolVersion: 0x01,
-		flags:           sourceSpecifierMask,
-		snet:            &snet,
-		slen:            &slenVal,
-		sadr:            []byte{0x99},
-		apdu:            []byte{0x10},
+	n, err := NewSourcedAPDU(2, []byte{0x99}, bacnet.NetworkPriorityNormal, false, []byte{0x10})
+	if err != nil {
+		t.Fatalf("NewSourcedAPDU: %v", err)
 	}
 
 	got, err := n.Encode()
@@ -290,22 +294,18 @@ func TestEncodeWithSourceSpecifier(t *testing.T) {
 //
 // Wire: [0x01][0x28] [DNET=5,2B] [DLEN=2] [DADR=0xAB,0xCD] [SNET=3,2B] [SLEN=1] [SADR=0x99] [HC=4] [APDU=0xFF]
 func TestEncodeWithBothSpecifiers(t *testing.T) {
-	dnet := UltimateDestinationNetworkNumber(5)
-	dlenVal := UltimateDestinationNetworkNumberMacAddressLength(2)
-	snet := OriginalSourceNetworkNumber(3)
-	slenVal := OriginalSourceNetworkNumberMacAddressLength(1)
-	hc := uint8(4)
-	n := &NetworkLayerProtocolDataUnit{
-		protocolVersion: 0x01,
-		flags:           destinationSpecifierMask | sourceSpecifierMask,
-		dnet:            &dnet,
-		dlen:            &dlenVal,
-		dadr:            []byte{0xAB, 0xCD},
-		snet:            &snet,
-		slen:            &slenVal,
-		sadr:            []byte{0x99},
-		hopCount:        &hc,
-		apdu:            []byte{0xFF},
+	n, err := NewRoutedSourcedAPDU(
+		5,
+		[]byte{0xAB, 0xCD},
+		4,
+		3,
+		[]byte{0x99},
+		bacnet.NetworkPriorityNormal,
+		false,
+		[]byte{0xFF},
+	)
+	if err != nil {
+		t.Fatalf("NewRoutedSourcedAPDU: %v", err)
 	}
 
 	got, err := n.Encode()
@@ -316,6 +316,53 @@ func TestEncodeWithBothSpecifiers(t *testing.T) {
 	want := []byte{0x01, 0x28, 0x00, 0x05, 0x02, 0xAB, 0xCD, 0x00, 0x03, 0x01, 0x99, 0x04, 0xFF}
 	if !bytes.Equal(got, want) {
 		t.Errorf("Encode() = %#v, want %#v", got, want)
+	}
+}
+
+func TestNewSourcedAPDU(t *testing.T) {
+	tests := []struct {
+		name       string
+		snet       OriginalSourceNetworkNumber
+		sadr       OriginalSourceMacLayerAddress
+		priority   bacnet.NetworkPriority
+		apdu       []byte
+		wantErr    error
+		expectFlag bool
+	}{
+		{name: "valid", snet: 2, sadr: []byte{0x99}, priority: bacnet.NetworkPriorityNormal, apdu: []byte{0x10}, expectFlag: true},
+		{name: "empty sadr", snet: 2, sadr: nil, priority: bacnet.NetworkPriorityNormal, apdu: []byte{0x10}, wantErr: ErrInvalidLength},
+		{name: "empty payload", snet: 2, sadr: []byte{0x99}, priority: bacnet.NetworkPriorityNormal, apdu: nil, wantErr: ErrInvalidLength},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := NewSourcedAPDU(tt.snet, tt.sadr, tt.priority, false, tt.apdu)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if n.HasSourceSpecifier() != tt.expectFlag {
+				t.Fatalf("HasSourceSpecifier = %v, want %v", n.HasSourceSpecifier(), tt.expectFlag)
+			}
+		})
+	}
+}
+
+func TestNewRoutedSourcedAPDU(t *testing.T) {
+	n, err := NewRoutedSourcedAPDU(5, []byte{0xAB}, 7, 3, []byte{0x99}, bacnet.NetworkPriorityNormal, true, []byte{0x10})
+	if err != nil {
+		t.Fatalf("NewRoutedSourcedAPDU: %v", err)
+	}
+	if !n.HasDestinationSpecifier() {
+		t.Fatal("expected destination specifier")
+	}
+	if !n.HasSourceSpecifier() {
+		t.Fatal("expected source specifier")
+	}
+	if !n.IsExpectingReply() {
+		t.Fatal("expected expecting-reply flag")
 	}
 }
 
@@ -407,6 +454,11 @@ func TestDecodeErrors(t *testing.T) {
 			name:    "dst specifier missing HopCount",
 			data:    []byte{0x01, 0x20, 0xFF, 0xFF, 0x00},
 			wantErr: ErrDecodeFailure,
+		},
+		{
+			name:    "dst specifier DNET zero",
+			data:    []byte{0x01, 0x20, 0x00, 0x00, 0x00, 0xFF},
+			wantErr: ErrInvalidNetworkNumber,
 		},
 		{
 			name:    "src specifier truncated at SNET",
@@ -550,6 +602,7 @@ func TestNewRoutedAPDU(t *testing.T) {
 		{"broadcast on remote net", 100, nil, 255, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
 		{"unicast on remote net", 100, []byte{0xAA, 0xBB}, 10, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
 		{"global broadcast", 0xFFFF, nil, 255, bacnet.NetworkPriorityNormal, []byte{0x10}, nil},
+		{"local network DNET rejected", 0, nil, 255, bacnet.NetworkPriorityNormal, []byte{0x10}, ErrInvalidNetworkNumber},
 		{"priority out of range", 1, nil, 255, 5, []byte{0x10}, ErrInvalidPriority},
 		{"empty apdu", 1, nil, 255, bacnet.NetworkPriorityNormal, nil, ErrInvalidLength},
 	}
@@ -588,7 +641,8 @@ func TestNewNetworkLayerMessage(t *testing.T) {
 		wantErr     error
 	}{
 		{"standard type", 0x01, []byte{0xDE, 0xAD}, bacnet.NetworkPriorityNormal, nil},
-		{"standard type no data", 0x04, nil, bacnet.NetworkPriorityNormal, nil},
+		{"standard type no data", 0x12, nil, bacnet.NetworkPriorityNormal, nil},
+		{"router-busy with empty payload rejected", 0x04, nil, bacnet.NetworkPriorityNormal, ErrInvalidLength},
 		{"proprietary type rejected", 0x80, nil, bacnet.NetworkPriorityNormal, ErrProprietaryMessageType},
 		{"priority out of range", 0x01, nil, 5, ErrInvalidPriority},
 	}
@@ -618,6 +672,59 @@ func TestNewNetworkLayerMessage(t *testing.T) {
 	}
 }
 
+func TestNewNetworkLayerMessagePayloadValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		messageType uint8
+		payload     []byte
+		wantErr     error
+	}{
+		{name: "who-is-router-to-network empty payload", messageType: 0x00, payload: nil, wantErr: nil},
+		{name: "who-is-router-to-network with dnet", messageType: 0x00, payload: []byte{0x00, 0x10}, wantErr: nil},
+		{name: "who-is-router-to-network wrong length", messageType: 0x00, payload: []byte{0x10}, wantErr: ErrInvalidLength},
+		{name: "i-am-router-to-network requires at least one network", messageType: 0x01, payload: nil, wantErr: ErrInvalidLength},
+		{name: "router-busy-to-network requires at least one network", messageType: 0x04, payload: nil, wantErr: ErrInvalidLength},
+		{name: "router-available-to-network requires at least one network", messageType: 0x05, payload: nil, wantErr: ErrInvalidLength},
+		{name: "what-is-network-number must be empty", messageType: 0x12, payload: []byte{0x01}, wantErr: ErrInvalidLength},
+		{name: "network-number-is valid", messageType: 0x13, payload: []byte{0x00, 0x01, 0x01}, wantErr: nil},
+		{name: "network-number-is invalid flag", messageType: 0x13, payload: []byte{0x00, 0x01, 0x02}, wantErr: ErrInvalidMessage},
+		{name: "initialize-routing-table valid one entry", messageType: 0x06, payload: []byte{0x01, 0x00, 0x01, 0x02, 0x01, 0xAA}, wantErr: nil},
+		{name: "initialize-routing-table truncated entry", messageType: 0x06, payload: []byte{0x01, 0x00, 0x01, 0x02, 0x02, 0xAA}, wantErr: ErrInvalidLength},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewNetworkLayerMessage(tt.messageType, tt.payload, bacnet.NetworkPriorityNormal)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDecodeNetworkLayerMessagePayloadValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		wire    []byte
+		wantErr error
+	}{
+		{name: "what-is-network-number with payload rejected", wire: []byte{0x01, 0x80, 0x12, 0x01}, wantErr: ErrDecodeFailure},
+		{name: "network-number-is invalid flag rejected", wire: []byte{0x01, 0x80, 0x13, 0x00, 0x01, 0x02}, wantErr: ErrDecodeFailure},
+		{name: "initialize-routing-table malformed rejected", wire: []byte{0x01, 0x80, 0x06, 0x01, 0x00, 0x01, 0x02, 0x02, 0xAA}, wantErr: ErrDecodeFailure},
+		{name: "valid network-number-is", wire: []byte{0x01, 0x80, 0x13, 0x00, 0x01, 0x01}, wantErr: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var n NetworkLayerProtocolDataUnit
+			err := n.Decode(tt.wire)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestNewProprietaryNetworkLayerMessage(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -629,7 +736,7 @@ func TestNewProprietaryNetworkLayerMessage(t *testing.T) {
 	}{
 		{"valid", 0x80, 0x1234, []byte{0x42}, bacnet.NetworkPriorityNormal, nil},
 		{"max type", 0xFF, 0xFFFF, nil, bacnet.NetworkPriorityNormal, nil},
-		{"standard type rejected", 0x7F, 0x1234, nil, bacnet.NetworkPriorityNormal, ErrInvalidMessageType},
+		{"standard type rejected", 0x7F, 0x1234, nil, bacnet.NetworkPriorityNormal, ErrInvalidMessage},
 		{"priority out of range", 0x80, 0x1234, nil, 9, ErrInvalidPriority},
 	}
 

@@ -52,38 +52,60 @@ func (m *unconfirmedClientMachine) State() machineState {
 	return m.state
 }
 
-// HandleStateTransition processes the given event and returns the resulting action.
+// Handle processes the given event and returns the resulting output.
 //
 // Valid transitions:
 //
-//	IDLE        + machineEventSendUnconfirmedRequest → COMPLETED / machineActionNone
+//	IDLE        + machineEventSendUnconfirmedRequest → COMPLETED / machineActionSendUnconfirmedRequest
 //	COMPLETED   + machineEventClose                  → COMPLETED / machineActionNone  (no-op)
 //	ABORTED     + machineEventClose                  → ABORTED   / machineActionNone  (no-op)
-func (m *unconfirmedClientMachine) Handle(event machineEvent) (machineAction, error) {
+func (m *unconfirmedClientMachine) Handle(event machineEvent, in machineInput) (machineOutput, error) {
 	switch m.state {
 	case machineStateIdle:
-		switch event {
-		case machineEventSendUnconfirmedRequest:
-			m.state = machineStateCompleted
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInIdleState(event, in)
 	case machineStateCompleted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInCompletedState(event)
 	case machineStateAborted:
-		switch event {
-		case machineEventClose:
-			return machineActionNone, nil
-		default:
-			return machineActionNone, invalidStateTransition(m.Role(), m.state, event)
-		}
+		return m.handleInAbortedState(event)
 	default:
 		panic(invalidStateTransition(m.Role(), m.state, event))
+	}
+}
+
+func (m *unconfirmedClientMachine) handleInIdleState(event machineEvent, in machineInput) (machineOutput, error) {
+	switch event {
+	case machineEventSendUnconfirmedRequest:
+		if in.UnconfirmedRequest == nil {
+			return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+		}
+		m.state = machineStateCompleted
+		return machineOutput{
+			action: machineActionSendUnconfirmedRequest,
+			OutboundAPDU: &outboundAPDU{
+				Type:          PDUTypeUnconfirmedRequest,
+				ServiceChoice: in.UnconfirmedRequest.ServiceChoice,
+				Payload:       in.UnconfirmedRequest.Payload,
+			},
+		}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedClientMachine) handleInCompletedState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventClose:
+		return machineOutput{action: machineActionNone}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
+	}
+}
+
+func (m *unconfirmedClientMachine) handleInAbortedState(event machineEvent) (machineOutput, error) {
+	switch event {
+	case machineEventClose:
+		return machineOutput{action: machineActionNone}, nil
+	default:
+		return machineOutput{}, invalidStateTransition(m.Role(), m.state, event)
 	}
 }

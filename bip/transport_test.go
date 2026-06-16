@@ -3,9 +3,8 @@ package bip
 import (
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
-
-	"go.wdy.de/bacnet/internal/util"
 )
 
 type fakeDatagramConn struct {
@@ -34,7 +33,7 @@ func (f *fakeDatagramConn) WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (in
 	if f.writeErr != nil {
 		return 0, f.writeErr
 	}
-	f.writtenData = util.CloneBytes(p)
+	f.writtenData = slices.Clone(p)
 	f.writtenAddr = addr
 	return len(p), nil
 }

@@ -1,5 +1,7 @@
 package bacnet
 
+import "slices"
+
 // Address identifies a BACnet station on a local or remote network.
 type Address struct {
 	Network NetworkNumber
@@ -31,4 +33,8 @@ func (a Address) MACBytes() []byte {
 	cloned := make([]byte, len(a.MAC))
 	copy(cloned, a.MAC)
 	return cloned
+}
+
+func (a Address) Equal(b Address) bool {
+	return a.Network == b.Network && slices.Equal(a.MAC, b.MAC)
 }

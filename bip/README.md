@@ -11,6 +11,7 @@ This package provides a BACnet/IP Annex J BVLC scaffold:
 - `DeviceIp4` helper for local broadcast and foreign-device registration orchestration
 - UDP datagram transport abstraction (`DatagramConn`, `Transport`)
 - Table-driven tests for codec behavior and transport flow
+- `ClientRuntime` helper (`NewClientRuntime`, `NewClientRuntimeWithConn`) that wires datagram conn, transport, stack, ASE, and typed APDU client for end-to-end client workflows
 
 ## current scope
 

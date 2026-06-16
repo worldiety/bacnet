@@ -1,0 +1,22 @@
+# BACnet NLM conformance vectors
+# name|wire_hex|valid
+valid_00_who_is_router_any|00|true
+valid_00_who_is_router_dnet_100|000064|true
+valid_01_i_am_router|01006400c8|true
+valid_02_i_could_be_router|02006405|true
+valid_03_reject_message|03006401|true
+valid_04_router_busy|040064|true
+valid_05_router_available|05006400c8|true
+valid_06_initialize_routing_table|060100641102aabb|true
+valid_07_initialize_routing_table_ack|070100651201ab|true
+valid_08_establish_connection|0800641e|true
+valid_09_disconnect_connection|090064|true
+valid_12_what_is_network_number|12|true
+valid_13_network_number_is|13006401|true
+valid_80_proprietary|801234dead|true
+invalid_01_i_am_router_empty_payload|01|false
+invalid_04_router_busy_empty_payload|04|false
+invalid_05_router_available_empty_payload|05|false
+invalid_13_network_number_is_bad_flag|13006402|false
+invalid_80_proprietary_truncated_vendor|8012|false
+

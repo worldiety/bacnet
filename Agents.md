@@ -1,8 +1,19 @@
+## Your role
+You are a software engineer tasked with implementing a Go library for the BACnet protocol. Your responsibilities include 
+designing the library's architecture, writing clean and efficient code, ensuring compliance with the BACnet standard,
+and providing comprehensive documentation and tests. You will work closely with the maintainer (aka user) to ensure 
+that the library meets their needs and expectations. Your goal is to create a high-quality, reliable, and user-friendly 
+BACnet library that can be easily integrated into various applications.
+
 ## Project description
-This project is a go implementation of the Bacnet standard. It is designed to be a lightweight and efficient library for building Bacnet applications in Go.
-The project focuses on the IP protocol, other Bacnet protocols may be implemented in the future, but are NOT the current scope of this project.
+This project is a go implementation of the Bacnet standard. It is designed to be a lightweight and efficient library for 
+building Bacnet applications in Go. The project focuses on the IP protocol, other Bacnet protocols may be implemented 
+in the future, but are NOT the current scope of this project.
 
 The Go module path is `go.wdy.de/bacnet`.
+
+For now the public API is not considered stable, changing it is okay, if identified as necessary during planning or
+conversation with the maintainer.
 
 ### Package layout
 
@@ -10,69 +21,53 @@ The Go module path is `go.wdy.de/bacnet`.
 |---|---|---|
 | `.` (`bacnet`) | active | Constants, core types, errors, addressing primitives |
 | `bip/` | active | BACnet/IP + BACnet/IP6 BVLC frame encode/decode + UDP datagram transport scaffold; all 12 Annex J BVLC function types in `bvlc_functions.go`; `BBMD` interface + `bbmdImpl` (BDT/FDT management) in `bbmd.go`; `DeviceIp4` interface + `deviceImpl` (local broadcast + foreign device registration) in `device.go` |
-| `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking) |
-| `encoding/` | planned | BACnet tag/value encoding |
+| `apdu/` | active | BACnet application layer scaffold (ASE dispatch + invoke tracking + clause 5.4 state-machine scaffolding); typed `Client` wrapper (`client.go`, `client_discovery.go`, `client_object_access.go`, `client_cov.go`, `client_extend.go`); `UserElement` wrapper |
+| `encoding/` | active | BACnet tag/value encoding; `ParseTag`, `EncodeOpeningTag`, `EncodeApplicationPrimitive`, `EncodeUnsigned`/`DecodeUnsigned` |
 | `npdu/` | active | BACnet network layer NPDU encode/decode scaffold (NPCI parsing, routed/local APDU constructors, network-layer-message constructors) |
-| `lpdu/` | planned | BACnet IP link layer scaffold |
-| `internal/util/` | active | Non-public `CloneBytes([]byte) []byte` helper used across all packages for defensive byte copies |
-| `testdata/` | planned | Binary packet fixtures |
+| `npdu/router/` | active | Routing table; `Router` interface, `Evaluate`, `AddConnectedRoute`/`AddLearnedRoute`, `Decision` type |
+| `internal/util/` | active | Non-public `CopyPointersValue[T any](in *T) *T` — generic pointer copy using Go 1.26 `new(*in)` syntax |
+| `testdata/npdu/` | active | Wire conformance vectors `nlm_vectors.txt` (format: `name\|hex\|valid`) |
 | `examples/` | deferred | Deferred until the API is stable |
 
 ## Technical requirements
-- The project must be implemented in Go (minimum version: 1.26.1, as declared in `go.mod`).
+- The project must be implemented purely in Go. The minimum go version is declared in the `go.mod` file.
+- The project must not make use of cgo or any C libraries.
 - The project must be well-documented and easy to use.
 - The project must be efficient and lightweight, with minimal dependencies.
-- The project must NOT use cgo. Ever. Make sure dependencies do not use cgo. If you need to use a dependency that uses cgo, find an alternative that does not use cgo, or notify the user.
+- The project must NOT use cgo. Ever. Make sure dependencies do not use cgo. If you need to use a dependency that uses cgo, find an alternative that does not use cgo, or notify the maintainer.
 
 ## Dependency requirements
-- Do not use dependencies unless absolutely necessary. If you need to use a dependency, make sure it is well-maintained and has a good reputation. Double check with the user whether using a dependency is okay.
-- The current baseline is standard-library-only (`go.mod` has no external module requirements); preserve that unless a reviewed exception is explicitly approved.
+- Do not use external dependencies unless absolutely necessary. If you need to use a dependency, make sure it is well-maintained and has a good reputation. Double check with the maintainer whether using a dependency is okay.
+
+- Library internal dependencies must be top down in the OSI Layer Model (e.g. `apdu` can depend on `npdu`, but `npdu` cannot depend on `apdu`).
+- The `internal/util` package is available for shared non-public helpers (e.g. `CopyPointersValue[T]`); use it for cross-package helpers to avoid duplication, but do not create package-local copies of the same helper.
+- If you notice a package needs to share code with another package, but the shared code does not fit cleanly into either package's public API, consider creating a new function in `internal/util`, or a new internal package. This is encouraged to avoid duplication of code and to keep the codebase organized.
+- Values that need to be accessed by multiple packages should be defined in the root `bacnet` package (e.g. `NetworkPriority`, `PropertyIdentifier`) or an internal package to avoid circular dependencies between subpackages (which are not allowed in go). Values that shall be visible to the library's users should be defined in the root `bacnet` package; values that are only used internally by the library can be defined in an internal package (e.g. `internal/constants`).
 
 ## Development requirements
-- The project is still in the prototype phase, so the API is not yet stable and may be changed when needed.
+- The project is still in the prototype phase, therefor the public API is not yet stable and may be changed when needed.
 - The project must be developed using best practices for Go development, including proper error handling.
 - The project should include unit tests for all major functionality, with a goal of achieving at least 80% code coverage.
+- Function, type, parameter, variable, constant or field names should be descriptive and follow Go naming conventions (e.g. `NewAddress`, `DeviceInstance`, `PropertyIdentifierPresentValue`).
 - Functions should be annotated with comments that explain their purpose, parameters, preconditions, and return values.
+- Types should be annotated with comments that explain their purpose and any important details about their behavior or constraints.
+- Constants and global variables should be annotated with brief comments that explain their purpose and any important details about their behavior or constraints wherever their identifier is not enough.
 - The packages define interface types for functionality like network (e.g. `DatagramConn` in `bip/transport.go`) to allow users to implement their own mocks for testing. 
   - The project should include tests that use these interfaces with in-memory implementations (e.g. `bip/transport_test.go`) to verify behavior without external dependencies.
-- The `apdu` package follows the same interface-first pattern (`Codec`, `Transport` in `apdu/ase.go`); tests use in-memory implementations in `apdu/ase_test.go` to verify dispatch and confirmed invoke lifecycle behavior.
-- In `bip`, prefer address-family helpers at integration boundaries: use `NewFrameForAddress` / `NewFrameWithType` in `bip/frame.go` and `NewDatagramConn` in `bip/transport.go` so IPv4 (`0x81`/`udp4`) and IPv6 (`0x82`/`udp6`) behavior stays consistent.
-- If package README files conflict with code, treat implementation and tests as source of truth.
+- The `apdu` package follows the same interface-first pattern (`ASE`, `NPDUTransport` in `apdu/ase.go`); tests use in-memory transport implementations in `apdu/ase_test.go` to verify dispatch and confirmed invoke lifecycle behavior.
 - The example directory is ignored for development until the project has a stable API (and this line is removed)
-- Run tests: `go test ./...`; generate coverage: `go test -coverprofile=coverage.out ./...`
+- Commands to run tests: `go test ./...`; and generate coverage: `go test -coverprofile=coverage.out ./...`
 
 ### Coding conventions
 - **Constructor pattern**: exported constructor functions are named `NewX(args) (T, error)` and validate all inputs before returning (e.g. `NewObjectIdentifier`, `NewDeviceInstance`, `NewAddress`).
 - **Validation errors**: use the NewValidationError function to construct the error
 - **`String()` methods**: use the BACnet specification's hyphen-separated names (e.g. `"analog-input"`, `"object-identifier"`, `"present-value"`). Unknown values fall back to `"type-name(N)"` (e.g. `"object-type(2048)"`). Composite types use comma-separated `"type,instance"` format (e.g. `ObjectIdentifier.String()` returns `"device,1234"`).
 - **Defensive copies**: slice-backed fields must be copied on both construction and access (see `NewAddress` and `Address.MACBytes()`).
-- **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`).
+- **APDU/NPDU byte ownership**: clone byte slices at public package boundaries (API/transport ingress and egress to callers), but avoid redundant cloning on internal ASE/state-machine paths once ownership is established. See `apdu/README.md`, `apdu/ase.go` (`OnInboundNPDU`), and `npdu/doc.go`.
+- **`Valid()` methods**: types with numeric constraints expose a `Valid() bool` method (e.g. `DeviceInstance.Valid()`, `ObjectType.Valid()`). Types with both standard and proprietary ranges additionally expose `ValidStandard() bool` (e.g. `RejectReason`, `NlmRejectReason`, `NetworkLayerMessageType`).
 - **`PropertyIdentifier`**: implemented in `types.go` as a starter subset with named constants (e.g. `PropertyIdentifierPresentValue`, `PropertyIdentifierObjectIdentifier`) and a `String()` fallback pattern (`property-identifier(N)` for unknown values). Follow the same pattern when adding new property identifiers.
 - **Boundary error wrapping**: on encode/decode/transport boundaries, wrap sentinel errors with `%w` and include the original error text (e.g. `fmt.Errorf("%w: %v", ErrEncodeFailure, err)` in `apdu/ase.go`, and `ErrReadFailure`/`ErrWriteFailure` wrapping in `bip/transport.go`).
-- **BVLC function struct pattern**: each Annex J function is a pointer-receiver struct embedding a private `BVLCHeader` field and implementing the `BVLCFunction` interface (`BVLCFunctionType()`, `Valid()`, `Encode() ([]byte, error)`, `Decode([]byte) error`). Constructors (`NewOriginalUnicastNpdu`, `NewForwardedNpdu`, `NewRegisterForeignDevice`, etc.) validate all inputs, clone slice fields, and compute the `BVLCLength` field from the total wire size. See `bip/bvlc_functions.go`.
-- **BBMD pattern**: `BBMD` in `bip/bbmd.go` is an interface with one `Handle*` method per inbound BVLC function (0x01, 0x02, 0x05, 0x06, 0x08). `NewBBMD(bdt []BdtEntry) (BBMD, error)` constructs `bbmdImpl`, which holds a `sync.RWMutex`-protected BDT slice and `map[netip.AddrPort]bbmdFdtEntry` FDT. The internal `bbmdFdtEntry` stores the registered TTL and an absolute `expiresAt` time (`now + ttl + 30s` per §J.5.2.3); `toWireFdtEntry()` sets unexported `FdtEntry` fields directly (same package) to encode the current remaining TTL. Expired entries are purged lazily in `HandleReadForeignDeviceTable`.
-- **`BVLCHeader`** is the shared internal header struct (`BVLCType` + `BVLCFunctionType` + `BVLCLength`) used in every BVLC function struct. `BVLCLength` has a `NewBVLCLength(int) (BVLCLength, error)` constructor for range-checked construction. Use `BVLCHeader.Encode()`/`BVLCHeader.Decode()` rather than encoding the header fields manually. Note: `BVLCHeader.Decode()` expects exactly 4 bytes (`BVLCHeaderLen`); `Encode()` allocates a slice of size `BVLCLength` with the header pre-filled.
-- **`BVLCResultCode`**: seven named constants in `bip/bvlc_functions.go` (`ResultCodeSuccessfulCompletion = 0x0000`, `ResultCodeWriteBroadcastDistributionTableNak = 0x0010`, …, `ResultCodeDistributeBroadcastToNetworkNak = 0x0060`). `Valid()` uses a switch; unknown codes are invalid.
-- **`BdtEntry` / `FdtEntry`**: value types (not pointers) in `bip/bvlc_functions.go`; each encodes to exactly 10 bytes on the wire (`BdtEntryDataLen = FdtEntryDataLen = 10`). Constructors return `*BdtEntry` / `*FdtEntry` but slice fields store values (`BdtEntryList`, `FdtEntryList`). `BdtEntry` carries a `net.IPMask` broadcast distribution mask (4 bytes, big-endian descending). `FdtEntry` carries `registeredTtl` and `remainingTtl` (both `TTL`).
-- **`TTL`** is `uint16` (seconds) defined in `bip/bvlc_functions.go` with a `ToDuration() time.Duration` helper. Must be non-zero in all constructors that accept it.
-- **`ASE` interface** (`apdu/ase.go`): public **interface** (not a concrete struct); `aseImpl` is the unexported concrete implementation. Constructed via `NewASE(cfg ASEConfig, codec Codec, transport Transport) (ASE, error)`. Key methods: `RegisterConfirmed`, `RegisterUnconfirmed`, `InvokeConfirmed`, `SendUnconfirmed`, `OnInbound`, `Close`. `ASEConfig` fields: `InvokeTimeout time.Duration`, `MaxConcurrentInvokes int`, `Segmentation SegmentationSupport`, `MaxAPDUSizeAccepted uint16`. `SegmentationSupport` constants: `SegmentationNo`, `SegmentationTransmit`, `SegmentationReceive`, `SegmentationBoth`.
-- **`UserElement` interface** (`apdu/user_element.go`): public wrapper over `ASE` that models BACnet B-X.request / B-X.indication / B-X.response / B-X.confirm interactions. Construct via `NewUserElement(ase ASE) (UserElement, error)`. `HandleConfirmed`/`HandleUnconfirmed` delegate to ASE handler registration; `InvokeConfirmed`/`SendUnconfirmed` delegate to the underlying ASE.
-- **APDU ICI types** (`apdu/ici.go`): use the BACnet interface-control-information structs when modeling service primitive boundaries: `ConfirmedRequestICI`, `UnconfirmedRequestICI`, `ConfirmedIndicationICI`, `UnconfirmedIndicationICI`, `ConfirmedResponseICI`, and `ConfirmICI`. `MaxSegmentsAccepted` and `ConfirmResult` each provide `String()` fallbacks (`max-segments(N)`, `confirm-result(N)`), and request/indication ICI carries `bacnet.NetworkPriority` plus segmentation/max-APDU metadata.
-- **APDU envelope types** (`apdu/types.go`): `InboundAPDU` and `OutboundAPDU` carry `(Type PDUType, InvokeID InvokeID, ServiceChoice ServiceChoice, Payload []byte)`. `ConfirmedRequest` and `UnconfirmedRequest` carry `(ServiceChoice, Payload []byte)`. `ServiceResult` carries `Payload []byte` (empty payload → `PDUTypeSimpleACK`, non-empty → `PDUTypeComplexACK`). `ConfirmedAck` carries `(Type PDUType, InvokeID, ServiceChoice, Payload []byte)`. The `Codec` interface translates between raw bytes and these envelope types; `Transport` sends encoded bytes via `SendAPDU(ctx context.Context, dst bacnet.Address, apdu []byte) error`.
-- **`PDUType` constants** (`apdu/types.go`): `PDUTypeConfirmedRequest = 0`, `PDUTypeUnconfirmedRequest = 1`, `PDUTypeSimpleACK = 2`, `PDUTypeComplexACK = 3`, `PDUTypeSegmentACK = 4`, `PDUTypeError = 5`, `PDUTypeReject = 6`, `PDUTypeAbort = 7`. Each has a `String()` method (e.g. `"confirmed-request"`, `"simple-ack"`); unknown values fall back to `"pdu-type(N)"`. `OnInbound` dispatches on this field: confirmed/unconfirmed requests route to registered handlers; ACK/error/reject/abort types complete the matching pending transaction.
-- **`BVLCResult` struct** (`bip/bvlc_functions.go`): represents a BVLC-Result message (function code `0x00`). Constructor `NewBVLCResult(resultCode BVLCResultCode) (*BVLCResult, error)` validates the result code and sets `BVLCTypeBACnetIP`. Used by all BBMD `Handle*` methods to signal success or NAK to the caller; access the code via `BVLCResult.ResultCode() BVLCResultCode`.
-- **Header-only constructors**: `NewReadBroadcastDistributionTable()` and `NewReadForeignDeviceTable()` return the struct directly with no error (they carry only a fixed 4-byte header and cannot fail). This is an intentional exception to the `NewX(args) (T, error)` pattern.
-- **`CloneBytes` helper**: `util.CloneBytes([]byte) []byte` defined in `internal/util/bytes.go`; import as `"go.wdy.de/bacnet/internal/util"` and call `util.CloneBytes` for all defensive copies of `[]byte` fields across every package — do not write a package-local copy.
-- **Constants**: root `constants.go` exposes `IpDefaultUdpPort uint16 = 0xbac0` (47808). `DefaultMaxDatagramSize = 1476` remains in `bip/transport.go` as the conservative IPv4 UDP payload budget.
-- **`BVLCType` helpers**: `BVLCType.IsIp4()` returns true for `0x81`; `BVLCType.IsIp6()` returns true for `0x82`. Both imply valid. Use these in decode paths instead of comparing the constant directly.
-- **`BdtEntryList` / `FdtEntryList`**: Named slice types (`type BdtEntryList []BdtEntry`, `type FdtEntryList []FdtEntry`) in `bip/bvlc_functions.go` with pointer-receiver `Encode() ([]byte, error)`, `Decode([]byte) error`, and `Valid() bool`. Used internally by `WriteBroadcastDistributionTable`, `ReadBroadcastDistributionTableAck`, `ReadForeignDeviceTableAck`.
-- **`DistributeBroadcastToNetwork`**: BVLC function struct for function code `0x09`. Constructor `NewDistributeBroadcastToNetwork(frameType BVLCType, npdu []byte) (*DistributeBroadcastToNetwork, error)` accepts both IPv4 (`0x81`) and IPv6 (`0x82`), unlike `ForwardedNpdu` which is IPv4-only.
-- **`OriginalUnicastNpdu` / `OriginalBroadcastNpdu`**: Constructors accept `frameType BVLCType` (both IPv4 and IPv6 are valid), unlike `ForwardedNpdu` / `RegisterForeignDevice` which are IPv4-only.
-- **`bip.Transport` struct**: Concrete struct in `bip/transport.go` (distinct from the `apdu.Transport` interface). Constructed via `NewTransport(conn DatagramConn, maxDatagramSize int) (*Transport, error)`. Key methods: `ReceiveFrame() (Frame, netip.AddrPort, error)` and `SendFrame(addr netip.AddrPort, frame Frame) error`.
-- **`ServiceChoice` constants** (`apdu/types.go`): `ServiceChoiceIAm = 0`, `ServiceChoiceWhoIs = 8`, `ServiceChoiceReadProperty = 12`. Each has a `String()` method returning hyphen-separated BACnet names (e.g. `"i-am"`, `"who-is"`, `"read-property"`); unknown values fall back to `"service-choice(N)"`.
-- **`NetworkPriority`** (`constants.go`): root BACnet priority enum used by `npdu` and APDU ICI types. Values are `NetworkPriorityNormal`, `NetworkPriorityUrgent`, `NetworkPriorityCriticalEquipment`, and `NetworkPriorityLifeSafety`; use `Valid()` for range checks and `String()` for hyphenated names with fallback `network-priority(N)`.
-- **`NetworkLayerProtocolDataUnit`** (`npdu/npdu.go`): NPDU scaffold with `Valid()`, `Encode() ([]byte, error)`, and `Decode([]byte) error`. Prefer constructors `NewLocalAPDU`, `NewRoutedAPDU`, `NewNetworkLayerMessage`, and `NewProprietaryNetworkLayerMessage` instead of assembling fields directly. `Valid()` enforces BACnet NPCI rules: reserved bits 4 and 6 must be zero, destination specifier requires `DNET`/`DLEN`/`HopCount` and optional `DADR`, source specifier requires non-zero `SLEN` plus `SNET`/`SADR`, and proprietary network-layer messages (`messageType >= 0x80`) require a vendor ID.
-- **NPDU accessors**: `DNET()`, `DADR()`, `HopCount()`, `SNET()`, `SADR()`, `MessageType()`, `VendorID()`, and `APDUBytes()` all return defensive copies or copied scalar pointers. `Version()`, `Flags()`, `Priority()`, `IsExpectingReply()`, `IsNetworkLayerMessage()`, `HasDestinationSpecifier()`, and `HasSourceSpecifier()` expose read-only scalar state. Use these accessors rather than reaching into unexported NPDU fields.
+- **Types**: define types for everything that has a specific meaning in the BACnet context, even if the type is just a thin wrapper of a primitive (e.g. `type DuplicateCount uint8` or `type transactionKey string`); this allows for better type safety and more descriptive code.
 
 ### Test conventions
 - Test files use the same package as the code under test (e.g. `package bacnet`, `package apdu`, `package bip`) — **not** `*_test` external packages.
@@ -93,3 +88,16 @@ The Go module path is `go.wdy.de/bacnet`.
 - The project uses commitizen for consistent commit messages, following the format `type(scope): description` (e.g. `feat(address): add NewAddress constructor`).
 - All commits must be made with the appropriate type (e.g. `feat`, `fix`, `docs`, `refactor`, etc.) and scope (e.g. `address`, `types`, `errors`, etc.) to ensure clear commit history and accurate changelog generation.
 - Commit/version automation is configured in `.cz.yaml` (`name: cz_conventional_commits`, `version_scheme: semver`, `major_version_zero: true`, `tag_format: $version`, `update_changelog_on_bump: true`); keep `Agents.md` guidance aligned with that file when release workflow changes.
+
+# Some more info
+- In go 1.26 (the current version as of this writing), new() has been updated to also accept an initial value not just types.
+  - This means `v := new(2)` and `a := 2; v := &a` both result in v being a pointer to an int with value 2.
+
+## Logging
+- `bacnet.Logger` is the single package-level `*slog.Logger` used by all packages — do not instantiate per-package loggers.
+- Pattern: `bacnet.Logger.Debug("description", "field", value, "error", err)`.
+
+## `apdu` package gotchas
+- Client-side segmented send/receive is **not implemented** (v1 scope). A segmented ComplexACK received by a client returns `ErrSegmentationNotSupported`. Server-side segmented receive and ComplexACK response are implemented.
+- Duplicate confirmed requests (same src + invokeID while a handler is in-flight) are **silently dropped** per §5.4.4 — this is intentional.
+- `ASEConfig` zero values for `PreferredWindowSize`, `MaxSegmentDuplicates`, `SegmentedTimedOutCollectorPeriod`, and `SegmentedRequestTimeout` are silently defaulted; do not treat 0 as "disabled".

@@ -162,3 +162,68 @@ func (p PropertyIdentifier) String() string {
 		return fmt.Sprintf("property-identifier(%d)", p)
 	}
 }
+
+type RejectReason uint8
+
+const (
+	RejectReasonOther                    RejectReason = 0
+	RejectReasonBufferOverflow           RejectReason = 1
+	RejectReasonInconsistentParameters   RejectReason = 2
+	RejectReasonInvalidParameterDataType RejectReason = 3
+	RejectReasonInvalidTag               RejectReason = 4
+	RejectReasonMissingRequiredParameter RejectReason = 5
+	RejectReasonParameterOutOfRange      RejectReason = 6
+	RejectReasonTooManyArguments         RejectReason = 7
+	RejectReasonUndefinedArguments       RejectReason = 8
+	RejectReasonUnrecognizedService      RejectReason = 9
+	RejectReasonInvalidDataEncoding      RejectReason = 10
+)
+
+// ValidStandard reports whether r is a defined standard BACnet reject reason.
+func (r RejectReason) ValidStandard() bool {
+	switch r {
+	case RejectReasonOther,
+		RejectReasonBufferOverflow,
+		RejectReasonInconsistentParameters,
+		RejectReasonInvalidParameterDataType,
+		RejectReasonInvalidTag,
+		RejectReasonMissingRequiredParameter,
+		RejectReasonParameterOutOfRange,
+		RejectReasonTooManyArguments,
+		RejectReasonUndefinedArguments,
+		RejectReasonUnrecognizedService,
+		RejectReasonInvalidDataEncoding:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r RejectReason) String() string {
+	switch r {
+	case RejectReasonOther:
+		return "other"
+	case RejectReasonBufferOverflow:
+		return "buffer-overflow"
+	case RejectReasonInconsistentParameters:
+		return "inconsistent-parameters"
+	case RejectReasonInvalidParameterDataType:
+		return "invalid-parameter-data-type"
+	case RejectReasonInvalidTag:
+		return "invalid-tag"
+	case RejectReasonMissingRequiredParameter:
+		return "missing-required-parameter"
+	case RejectReasonParameterOutOfRange:
+		return "parameter-out-of-range"
+	case RejectReasonTooManyArguments:
+		return "too-many-arguments"
+	case RejectReasonUndefinedArguments:
+		return "undefined-arguments"
+	case RejectReasonUnrecognizedService:
+		return "unrecognized-service"
+	case RejectReasonInvalidDataEncoding:
+		return "invalid-data-encoding"
+	default:
+		return fmt.Sprintf("reject-reason(%d)", r)
+	}
+}

@@ -1,0 +1,406 @@
+package bip
+
+import (
+	"context"
+	"encoding/binary"
+	"errors"
+	"net/netip"
+	"testing"
+	"time"
+
+	"go.wdy.de/bacnet"
+	"go.wdy.de/bacnet/apdu"
+	"go.wdy.de/bacnet/npdu"
+)
+
+// ---- helpers ------------------------------------------------------------------
+
+// pipeConn is a simple in-memory DatagramConn: writes are captured, reads are
+// served from a pre-loaded queue.
+type pipeConn struct {
+	queue    []queuedResponse
+	readIdx  int
+	writeErr error
+	closed   bool
+
+	written []struct {
+		data []byte
+		addr netip.AddrPort
+	}
+}
+
+func (p *pipeConn) ReadFromUDPAddrPort(buf []byte) (int, netip.AddrPort, error) {
+	if p.closed {
+		return 0, netip.AddrPort{}, ErrReadFailure
+	}
+	if p.readIdx >= len(p.queue) {
+		// Block until closed (simulates an idle socket).
+		for !p.closed {
+			time.Sleep(time.Millisecond)
+		}
+		return 0, netip.AddrPort{}, ErrReadFailure
+	}
+	r := p.queue[p.readIdx]
+	p.readIdx++
+	n := copy(buf, r.data)
+	return n, r.src, nil
+}
+
+func (p *pipeConn) WriteToUDPAddrPort(data []byte, addr netip.AddrPort) (int, error) {
+	if p.writeErr != nil {
+		return 0, p.writeErr
+	}
+	d := make([]byte, len(data))
+	copy(d, data)
+	p.written = append(p.written, struct {
+		data []byte
+		addr netip.AddrPort
+	}{data: d, addr: addr})
+	return len(data), nil
+}
+
+func (p *pipeConn) Close() error {
+	p.closed = true
+	return nil
+}
+
+func mustStack(t *testing.T, conn DatagramConn) *Stack {
+	t.Helper()
+	tr, err := NewTransport(conn, DefaultMaxDatagramSize)
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
+	s, err := NewStack(tr)
+	if err != nil {
+		t.Fatalf("NewStack: %v", err)
+	}
+	return s
+}
+
+// minLocalNPDU builds the shortest valid local APDU NPDU (2 header bytes + payload).
+func minLocalNPDU(t *testing.T, apduBytes []byte) []byte {
+	t.Helper()
+	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	if err != nil {
+		t.Fatalf("NewLocalAPDU: %v", err)
+	}
+	b, err := pkt.Encode()
+	if err != nil {
+		t.Fatalf("NPDU.Encode: %v", err)
+	}
+	return b
+}
+
+// buildOriginalUnicastFrame encodes a complete Original-Unicast-NPDU BVLC frame
+// carrying npduBytes that can be fed to Transport.ReceiveFrame.
+func buildOriginalUnicastFrame(t *testing.T, npduBytes []byte) []byte {
+	t.Helper()
+	msg, err := NewOriginalUnicastNpdu(BVLCTypeBACnetIP, npduBytes)
+	if err != nil {
+		t.Fatalf("NewOriginalUnicastNpdu: %v", err)
+	}
+	raw, err := msg.Encode()
+	if err != nil {
+		t.Fatalf("OriginalUnicastNpdu.Encode: %v", err)
+	}
+	return raw
+}
+
+// buildOriginalBroadcastFrame builds a broadcast BVLC frame.
+func buildOriginalBroadcastFrame(t *testing.T, npduBytes []byte) []byte {
+	t.Helper()
+	msg, err := NewOriginalBroadcastNpdu(BVLCTypeBACnetIP, npduBytes)
+	if err != nil {
+		t.Fatalf("NewOriginalBroadcastNpdu: %v", err)
+	}
+	raw, err := msg.Encode()
+	if err != nil {
+		t.Fatalf("OriginalBroadcastNpdu.Encode: %v", err)
+	}
+	return raw
+}
+
+// buildForwardedNpduFrame builds a Forwarded-NPDU BVLC frame.
+func buildForwardedNpduFrame(t *testing.T, originAddr netip.AddrPort, npduBytes []byte) []byte {
+	t.Helper()
+	msg, err := NewForwardedNpdu(originAddr, npduBytes)
+	if err != nil {
+		t.Fatalf("NewForwardedNpdu: %v", err)
+	}
+	raw, err := msg.Encode()
+	if err != nil {
+		t.Fatalf("ForwardedNpdu.Encode: %v", err)
+	}
+	return raw
+}
+
+// ---- testASE ------------------------------------------------------------------
+
+// testASE captures calls to OnInboundNPDU.
+type testASE struct {
+	calls []inboundCall
+}
+
+type inboundCall struct {
+	src bacnet.Address
+	pkt npdu.NetworkLayerProtocolDataUnit
+}
+
+func (a *testASE) RegisterConfirmed(_ apdu.ServiceChoice, _ apdu.ConfirmedHandler) error {
+	return nil
+}
+func (a *testASE) RegisterUnconfirmed(_ apdu.ServiceChoice, _ apdu.UnconfirmedHandler) error {
+	return nil
+}
+func (a *testASE) BeginConfirmedServiceRequest(_ context.Context, _ apdu.ConfirmedRequestICI) (apdu.ConfirmICI, error) {
+	return apdu.ConfirmICI{}, nil
+}
+func (a *testASE) SendUnconfirmed(_ context.Context, _ apdu.UnconfirmedRequestICI) error {
+	return nil
+}
+func (a *testASE) OnInboundNPDU(_ context.Context, src bacnet.Address, pkt npdu.NetworkLayerProtocolDataUnit) error {
+	a.calls = append(a.calls, inboundCall{src: src, pkt: pkt})
+	return nil
+}
+func (a *testASE) Close() error { return nil }
+
+// ---- NewStack tests -----------------------------------------------------------
+
+func TestNewStack(t *testing.T) {
+	conn := &pipeConn{}
+	tr, _ := NewTransport(conn, DefaultMaxDatagramSize)
+
+	tests := []struct {
+		name      string
+		transport *Transport
+		wantErr   error
+	}{
+		{name: "valid", transport: tr},
+		{name: "nil transport", transport: nil, wantErr: ErrNilTransport},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewStack(tt.transport)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---- SendNPDU tests -----------------------------------------------------------
+
+func TestStackSendNPDUEncoding(t *testing.T) {
+	conn := &pipeConn{}
+	s := mustStack(t, conn)
+
+	apduBytes := []byte{0x10, 0x08} // unconfirmed-request, WhoIs
+	pkt, err := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, apduBytes)
+	if err != nil {
+		t.Fatalf("NewLocalAPDU: %v", err)
+	}
+
+	// A BACnet/IP peer at 192.168.1.20:47808.
+	dstAddrPort := netip.MustParseAddrPort("192.168.1.20:47808")
+	dst, err := AddrPortToAddress(dstAddrPort)
+	if err != nil {
+		t.Fatalf("AddrPortToAddress: %v", err)
+	}
+
+	if err := s.SendNPDU(context.Background(), dst, *pkt); err != nil {
+		t.Fatalf("SendNPDU: %v", err)
+	}
+
+	if len(conn.written) != 1 {
+		t.Fatalf("written datagrams = %d, want 1", len(conn.written))
+	}
+
+	// Verify the UDP destination.
+	if conn.written[0].addr != dstAddrPort {
+		t.Errorf("UDP dst = %v, want %v", conn.written[0].addr, dstAddrPort)
+	}
+
+	// Verify the BVLC function type byte (byte 1 of the frame).
+	wire := conn.written[0].data
+	if len(wire) < BVLCHeaderLen {
+		t.Fatalf("wire too short: %d bytes", len(wire))
+	}
+	if wire[0] != byte(BVLCTypeBACnetIP) {
+		t.Errorf("BVLC type = 0x%02x, want 0x%02x", wire[0], BVLCTypeBACnetIP)
+	}
+	if wire[1] != byte(FunctionOriginalUnicastNPDU) {
+		t.Errorf("BVLC function = 0x%02x, want 0x%02x", wire[1], FunctionOriginalUnicastNPDU)
+	}
+
+	// Verify BVLC length field matches actual wire length.
+	declaredLen := int(binary.BigEndian.Uint16(wire[2:4]))
+	if declaredLen != len(wire) {
+		t.Errorf("declared length %d != actual %d", declaredLen, len(wire))
+	}
+}
+
+func TestStackSendNPDUUnsupportedAddress(t *testing.T) {
+	conn := &pipeConn{}
+	s := mustStack(t, conn)
+
+	pkt, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x01})
+
+	// Non-local network address cannot be converted to AddrPort.
+	dst := bacnet.Address{Network: 100, MAC: []byte{1, 2, 3, 4, 0xBA, 0xC0}}
+	err := s.SendNPDU(context.Background(), dst, *pkt)
+	if !errors.Is(err, ErrUnsupportedAddress) {
+		t.Fatalf("err = %v, want %v", err, ErrUnsupportedAddress)
+	}
+}
+
+func TestStackSendNPDUWriteError(t *testing.T) {
+	conn := &pipeConn{writeErr: ErrWriteFailure}
+	s := mustStack(t, conn)
+
+	pkt, _ := npdu.NewLocalAPDU(bacnet.NetworkPriorityNormal, false, []byte{0x01})
+	dst, _ := AddrPortToAddress(netip.MustParseAddrPort("1.2.3.4:47808"))
+
+	err := s.SendNPDU(context.Background(), dst, *pkt)
+	if !errors.Is(err, ErrWriteFailure) {
+		t.Fatalf("err = %v, want %v", err, ErrWriteFailure)
+	}
+}
+
+// ---- Run dispatch tests -------------------------------------------------------
+
+func TestStackRunNilASE(t *testing.T) {
+	conn := &pipeConn{}
+	s := mustStack(t, conn)
+	err := s.Run(context.Background(), nil)
+	if !errors.Is(err, ErrNilASE) {
+		t.Fatalf("err = %v, want %v", err, ErrNilASE)
+	}
+}
+
+func TestStackRunContextCancel(t *testing.T) {
+	conn := &pipeConn{} // no queued frames; will block until closed
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancel")
+	}
+}
+
+func TestStackRunDispatchesUnicastFrame(t *testing.T) {
+	sender := netip.MustParseAddrPort("192.168.1.5:47808")
+	npduBytes := minLocalNPDU(t, []byte{0x10, 0x08})
+	wire := buildOriginalUnicastFrame(t, npduBytes)
+
+	conn := &pipeConn{queue: []queuedResponse{{data: wire, src: sender}}}
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	// Allow the frame to be dispatched, then cancel.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(ase.calls) != 1 {
+		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
+	}
+
+	wantSrc, _ := AddrPortToAddress(sender)
+	if !ase.calls[0].src.Equal(wantSrc) {
+		t.Errorf("src = %v, want %v", ase.calls[0].src, wantSrc)
+	}
+}
+
+func TestStackRunDispatchesBroadcastFrame(t *testing.T) {
+	sender := netip.MustParseAddrPort("10.0.0.3:47808")
+	npduBytes := minLocalNPDU(t, []byte{0x10, 0x08})
+	wire := buildOriginalBroadcastFrame(t, npduBytes)
+
+	conn := &pipeConn{queue: []queuedResponse{{data: wire, src: sender}}}
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(ase.calls) != 1 {
+		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
+	}
+
+	wantSrc, _ := AddrPortToAddress(sender)
+	if !ase.calls[0].src.Equal(wantSrc) {
+		t.Errorf("src = %v, want %v", ase.calls[0].src, wantSrc)
+	}
+}
+
+func TestStackRunDispatchesForwardedFrame(t *testing.T) {
+	bbmd := netip.MustParseAddrPort("10.0.0.1:47808")
+	originator := netip.MustParseAddrPort("172.16.0.50:47808")
+	npduBytes := minLocalNPDU(t, []byte{0x10, 0x08})
+	wire := buildForwardedNpduFrame(t, originator, npduBytes)
+
+	conn := &pipeConn{queue: []queuedResponse{{data: wire, src: bbmd}}}
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(ase.calls) != 1 {
+		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
+	}
+
+	// Source must be the originator, NOT the BBMD.
+	wantSrc, _ := AddrPortToAddress(originator)
+	if !ase.calls[0].src.Equal(wantSrc) {
+		t.Errorf("src = %v, want originator %v", ase.calls[0].src, wantSrc)
+	}
+}
+
+func TestStackRunSkipsNonAPDUFrames(t *testing.T) {
+	sender := netip.MustParseAddrPort("10.0.0.1:47808")
+	// A ReadBDT request is a BBMD control frame, not an APDU-containing frame.
+	rbt := NewReadBroadcastDistributionTable()
+	wire, _ := rbt.Encode()
+
+	conn := &pipeConn{queue: []queuedResponse{{data: wire, src: sender}}}
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(ase.calls) != 0 {
+		t.Fatalf("OnInboundNPDU calls = %d, want 0 (non-APDU frame should be skipped)", len(ase.calls))
+	}
+}

@@ -6,6 +6,9 @@ var (
 	// ErrInvalidLength indicates that a buffer or field length is outside the valid range.
 	ErrInvalidLength = errors.New("invalid length")
 
+	// ErrInvalidNetworkNumber indicates that a BACnet network number is outside the valid range.
+	ErrInvalidNetworkNumber = errors.New("invalid network number")
+
 	// ErrInvalidProtocolVersion indicates that the NPDU version byte is not 0x01.
 	ErrInvalidProtocolVersion = errors.New("invalid protocol version")
 
@@ -15,9 +18,9 @@ var (
 	// ErrInvalidPriority indicates that the network priority value exceeds 3.
 	ErrInvalidPriority = errors.New("invalid network priority")
 
-	// ErrInvalidMessageType indicates that a standard NL message constructor received
+	// ErrInvalidMessage indicates that a standard NL message constructor received
 	// a proprietary message type code (>= 0x80). Use NewProprietaryNetworkLayerMessage.
-	ErrInvalidMessageType = errors.New("invalid message type")
+	ErrInvalidMessage = errors.New("invalid message type")
 
 	// ErrProprietaryMessageType indicates that a proprietary NL message constructor
 	// received a standard message type code (< 0x80). Use NewNetworkLayerMessage.
@@ -28,4 +31,6 @@ var (
 
 	// ErrDecodeFailure indicates that decoding raw bytes as an NPDU failed.
 	ErrDecodeFailure = errors.New("decode failure")
+
+	ErrInvalidHopCount = errors.New("invalid hop count")
 )

@@ -27,18 +27,40 @@ type DatagramConn interface {
 	Close() error
 }
 
+type connection struct {
+	listener *net.UDPConn
+}
+
+func (c *connection) ReadFromUDPAddrPort(p []byte) (n int, addr netip.AddrPort, err error) {
+	return c.listener.ReadFromUDPAddrPort(p)
+}
+
+func (c *connection) WriteToUDPAddrPort(p []byte, addr netip.AddrPort) (n int, err error) {
+	return c.listener.WriteTo(p, net.UDPAddrFromAddrPort(addr))
+}
+
+func (c *connection) Close() error {
+	return c.listener.Close()
+}
+
 func NewDatagramConn(addr netip.Addr) (DatagramConn, error) {
 	network, err := udpNetworkForAddress(addr)
 	if err != nil {
+		bacnet.Logger.Error("bip transport select udp network", "error", err, "addr", addr)
 		return nil, err
 	}
 
 	udpAddr := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, bacnet.IpDefaultUdpPort))
+
 	conn, err := net.ListenUDP(network, udpAddr)
 	if err != nil {
+		bacnet.Logger.Error("bip transport listen udp", "error", err, "network", network, "addr", udpAddr)
 		return nil, fmt.Errorf("failed to listen on %v: %w", udpAddr, err)
 	}
-	return conn, nil
+
+	return new(connection{
+		listener: conn,
+	}), nil
 }
 
 func udpNetworkForAddress(addr netip.Addr) (string, error) {
@@ -96,11 +118,13 @@ func (t *Transport) ReceiveFrame() (Frame, netip.AddrPort, error) {
 	buf := make([]byte, t.maxDatagramSize)
 	n, addr, err := t.conn.ReadFromUDPAddrPort(buf)
 	if err != nil {
+		bacnet.Logger.Error("bip transport read datagram", "error", err)
 		return Frame{}, netip.AddrPort{}, fmt.Errorf("%w: %v", ErrReadFailure, err)
 	}
 
 	frame, err := DecodeFrame(buf[:n])
 	if err != nil {
+		bacnet.Logger.Error("bip transport decode frame", "error", err, "bytes", n)
 		return Frame{}, netip.AddrPort{}, err
 	}
 	return frame, addr, nil
@@ -110,6 +134,7 @@ func (t *Transport) ReceiveFrame() (Frame, netip.AddrPort, error) {
 func (t *Transport) SendFrame(addr netip.AddrPort, frame Frame) error {
 	raw, err := frame.Encode()
 	if err != nil {
+		bacnet.Logger.Error("bip transport encode frame", "error", err, "dst", addr)
 		return err
 	}
 	if len(raw) > t.maxDatagramSize {
@@ -117,6 +142,7 @@ func (t *Transport) SendFrame(addr netip.AddrPort, frame Frame) error {
 	}
 
 	if _, err := t.conn.WriteToUDPAddrPort(raw, addr); err != nil {
+		bacnet.Logger.Error("bip transport write datagram", "error", err, "dst", addr, "bytes", len(raw))
 		return fmt.Errorf("%w: %v", ErrWriteFailure, err)
 	}
 	return nil
