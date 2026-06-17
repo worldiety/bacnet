@@ -14,18 +14,77 @@ import (
 )
 
 // RemoteErrorAPDU indicates the peer completed a confirmed request with an Error APDU.
+// ErrorClass and ErrorCode are decoded from the wire payload. If the payload was
+// malformed and could not be decoded, ParseFailed is true and ErrorClass /
+// ErrorCode are set to ErrorClassUnknown / ErrorCodeUnknown.
 type RemoteErrorAPDU struct {
 	InvokeId      InvokeID
 	ServiceChoice ServiceChoice
-	ErrorPayload  []byte
+	ErrorClass    ErrorClass
+	ErrorCode     ErrorCode
+	ParseFailed   bool
 }
 
 func (e RemoteErrorAPDU) Error() string {
-	return fmt.Sprintf("remote error APDU for service %s", e.ServiceChoice)
+	if e.ParseFailed {
+		return fmt.Sprintf("remote error APDU for service %s: (malformed payload)", e.ServiceChoice)
+	}
+	return fmt.Sprintf("remote error APDU for service %s: %s/%s", e.ServiceChoice, e.ErrorClass, e.ErrorCode)
 }
 
 func (e RemoteErrorAPDU) Unwrap() error {
 	return ErrRemoteError
+}
+
+// decodeErrorPayload parses the two consecutive application-tagged ENUMERATED
+// values (error-class, error-code) from a BACnet Error-PDU body (clause 18.1).
+//
+// The BACnet-Error SEQUENCE on the wire is:
+//
+//	[app-tag-9 error-class] [app-tag-9 error-code]
+//
+// Trailing bytes beyond the two fields are tolerated for forward-compatibility
+// with future revisions of the standard. Returns ErrDecodeFailure if either
+// field cannot be parsed.
+func decodeErrorPayload(payload []byte) (ErrorClass, ErrorCode, error) {
+	const enumeratedTag = 9 // BACnet application tag for ENUMERATED (clause 20.2.11)
+
+	_, classRaw, next, err := decodeExpectedApplicationPrimitive(payload, 0, enumeratedTag)
+	if err != nil {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: error-class: %v", ErrDecodeFailure, err)
+	}
+
+	classVal, err := decodeUnsigned(classRaw)
+	if err != nil {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: error-class value: %v", ErrDecodeFailure, err)
+	}
+
+	_, codeRaw, _, err := decodeExpectedApplicationPrimitive(payload, next, enumeratedTag)
+	if err != nil {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: error-code: %v", ErrDecodeFailure, err)
+	}
+
+	codeVal, err := decodeUnsigned(codeRaw)
+	if err != nil {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: error-code value: %v", ErrDecodeFailure, err)
+	}
+
+	class := ErrorClass(classVal)
+	code := ErrorCode(codeVal)
+
+	if !code.Valid() {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: invalid error-code value: %v", ErrDecodeFailure, code)
+	}
+
+	if !class.Valid() {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: invalid error-class value: %v", ErrDecodeFailure, class)
+	}
+
+	if codeVal != 0 && (code.Class() != class) { //code val should match class, other is allowed always
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: error-class missmatch: got %v, error code indicates %v", ErrDecodeFailure, class, code.Class())
+	}
+
+	return ErrorClass(classVal), ErrorCode(codeVal), nil
 }
 
 // RemoteRejectAPDU indicates the peer completed a confirmed request with a Reject APDU.
@@ -66,11 +125,19 @@ func classifyRemoteAPDUError(serviceChoice ServiceChoice, err error) error {
 	if tErr, ok := errors.AsType[*TransactionError](err); ok {
 		switch {
 		case errors.Is(tErr.Err, ErrRemoteError):
-			return RemoteErrorAPDU{
+			e := RemoteErrorAPDU{
 				InvokeId:      tErr.InboundApdu.InvokeID,
 				ServiceChoice: tErr.InboundApdu.ServiceChoice,
-				ErrorPayload:  tErr.InboundApdu.Payload,
+				ErrorClass:    ErrorClassUnknown,
+				ErrorCode:     ErrorCodeUnknown,
 			}
+			if ec, code, err := decodeErrorPayload(tErr.InboundApdu.Payload); err == nil {
+				e.ErrorClass = ec
+				e.ErrorCode = code
+			} else {
+				e.ParseFailed = true
+			}
+			return e
 		case errors.Is(tErr.Err, ErrRemoteReject):
 			var reason RejectReason
 			if tErr.InboundApdu != nil && len(tErr.InboundApdu.Payload) > 0 {

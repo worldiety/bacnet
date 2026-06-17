@@ -126,11 +126,7 @@ func (r *ClientRuntime) Close() error {
 
 	if r.transport != nil {
 		if err := r.transport.Close(); err != nil {
-			if closeErr == nil {
-				closeErr = err
-			} else {
-				closeErr = errors.Join(closeErr, err)
-			}
+			closeErr = errors.Join(closeErr, err)
 		}
 	}
 

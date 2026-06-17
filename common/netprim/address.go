@@ -14,6 +14,13 @@ type Address struct {
 	AddrPort netip.AddrPort
 }
 
+func NewAddressFromAddrPort(addrPort netip.AddrPort) Address {
+	return Address{
+		Network:  LocalNetwork,
+		AddrPort: addrPort,
+	}
+}
+
 // NewAddress constructs an address and defensively copies the MAC bytes.
 func NewAddress(network NetworkNumber, addPort []byte) (Address, error) {
 	if len(addPort) != 6 {

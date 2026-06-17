@@ -532,3 +532,150 @@ func encodeReadRangeACKPayloadForTest(ack ReadRangeACK) []byte {
 	out = append(out, encodeClosingTag(5)...)
 	return out
 }
+
+func Test_decodeErrorPayload(t *testing.T) {
+	tests := []struct {
+		//payload tag&length error class tag&length error code
+		payload       []byte
+		expectedCode  ErrorCode
+		expectedClass ErrorClass
+		expectedError error
+	}{
+		{
+			payload:       nil,
+			expectedCode:  ErrorCodeUnknown,
+			expectedClass: ErrorClassUnknown,
+			expectedError: ErrDecodeFailure,
+		},
+		{
+			payload:       []byte{0x91, 0x01, 0x91, 0x1F},
+			expectedCode:  ErrorCodeObjectUnknownObject,
+			expectedClass: ErrorClassObject,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x02, 0x91, 0x1B},
+			expectedCode:  ErrorCodePropertyReadAccessDenied,
+			expectedClass: ErrorClassProperty,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x01, 0x91, 0x86}, // miss match: err 0x86 is class 0x02
+			expectedCode:  ErrorCodeUnknown,
+			expectedClass: ErrorClassUnknown,
+			expectedError: ErrDecodeFailure,
+		},
+		{
+			payload:       []byte{0x91, 0x02, 0x91, 0x86},
+			expectedCode:  ErrorCodePropertyValueTooLong,
+			expectedClass: ErrorClassProperty,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x03, 0x91, 0x12},
+			expectedCode:  ErrorCodeResourcesNoSpaceForObject,
+			expectedClass: ErrorClassResources,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x04, 0x91, 0x54},
+			expectedCode:  ErrorCodeSecuritySuccess,
+			expectedClass: ErrorClassSecurity,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x05, 0x91, 0x05},
+			expectedCode:  ErrorCodeServicesFileAccessDenied,
+			expectedClass: ErrorClassServices,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x06, 0x91, 0x23},
+			expectedCode:  ErrorCodeVTUnknownVtSession,
+			expectedClass: ErrorClassVT,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x07, 0x91, 0x35},
+			expectedCode:  ErrorCodeCommunicationAbortPreemptedByHigherPriorityTask,
+			expectedClass: ErrorClassCommunication,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x07, 0x91, 0xF3},
+			expectedCode:  ErrorCodeUnknown,
+			expectedClass: ErrorClassUnknown,
+			expectedError: ErrDecodeFailure,
+		},
+		{
+			payload:       []byte{0x91, 0x09, 0x91, 0x35},
+			expectedCode:  ErrorCodeUnknown,
+			expectedClass: ErrorClassUnknown,
+			expectedError: ErrDecodeFailure,
+		},
+
+		{
+			payload:       []byte{0x91, 0x00, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassDevice,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x01, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassObject,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x02, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassProperty,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x03, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassResources,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x04, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassSecurity,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x05, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassServices,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x06, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassVT,
+			expectedError: nil,
+		},
+		{
+			payload:       []byte{0x91, 0x07, 0x91, 0x00},
+			expectedCode:  ErrorCodeOther,
+			expectedClass: ErrorClassCommunication,
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		resClass, resCode, err := decodeErrorPayload(tt.payload)
+		if !errors.Is(err, tt.expectedError) {
+			t.Errorf("decodeErrorPayload(%v) error = %v, wantErr nil", tt.payload, err)
+		}
+
+		if resClass != tt.expectedClass {
+			t.Errorf("decodeErrorPayload(%v) resClass = %v, want %v", tt.payload, resClass, tt.expectedClass)
+		}
+
+		if resCode != tt.expectedCode {
+			t.Errorf("decodeErrorPayload(%v) resCode = %v, want %v", tt.payload, resCode, tt.expectedCode)
+		}
+	}
+}
