@@ -26,6 +26,14 @@ type ClientRuntimeConfig struct {
 	Client apdu.ClientConfig
 }
 
+func DefaultClientRuntimeConfig() ClientRuntimeConfig {
+	return ClientRuntimeConfig{
+		MaxDatagramSize: bip.DefaultMaxDatagramSize,
+		ASE:             apdu.DefaultASEConfig(),
+		Client:          apdu.DefaultClientConfig(),
+	}
+}
+
 // ClientRuntime wires DatagramConn -> Transport -> Stack -> ASE -> typed Client.
 //
 // Run starts the inbound receive loop. Close stops the ASE and transport.

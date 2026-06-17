@@ -53,6 +53,28 @@ type ASEConfig struct {
 	TimeoutGracePeriod               time.Duration         // time a timed out request is stored after expiring before it is deleted
 }
 
+// DefaultASEConfig returns an ASEConfig with sensible defaults suitable for
+// most BACnet/IP client applications:
+//
+//   - InvokeTimeout: 10 s — generous enough for slow field devices, per clause 5.4.
+//   - APDURetries: 3 — standard recommendation.
+//   - MaxConcurrentInvokes: 16 — balances throughput against controller load.
+//   - MaxAPDUSizeAccepted: 1476 bytes — maximum that fits in a single Ethernet NPDU.
+//   - Segmentation: SegmentationSupportNo — client-side segmented send is not yet
+//     implemented; receiving segmented responses is handled transparently by the ASE.
+//
+// All other fields are left at their zero values; NewASE applies its own
+// documented defaults for those (e.g. PreferredWindowSize → 1).
+func DefaultASEConfig() ASEConfig {
+	return ASEConfig{
+		InvokeTimeout:        10 * time.Second,
+		APDURetries:          3,
+		MaxConcurrentInvokes: 16,
+		MaxAPDUSizeAccepted:  1476,
+		Segmentation:         SegmentationSupportNo,
+	}
+}
+
 // NPDUTransport sends NPDUs to a BACnet peer.
 type NPDUTransport interface {
 	SendNPDU(ctx context.Context, dst netprim.Address, packet npdu.NetworkLayerProtocolDataUnit) error

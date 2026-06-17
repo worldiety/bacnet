@@ -25,6 +25,22 @@ type ClientConfig struct {
 	Priority              netprim.NetworkPriority
 }
 
+// DefaultClientConfig returns a ClientConfig with sensible defaults suitable
+// for most BACnet/IP client applications:
+//
+//   - MaxAPDULengthAccepted: 1476 bytes — maximum that fits in a single Ethernet NPDU.
+//   - SegmentationSupported: SegmentationSupportNo — matches DefaultASEConfig.
+//   - MaxSegmentsAccepted: MaxSegmentsUnspecified — no constraint advertised to peers.
+//   - Priority: NetworkPriorityNormal — standard priority for non-alarm traffic.
+func DefaultClientConfig() ClientConfig {
+	return ClientConfig{
+		MaxAPDULengthAccepted: defaultClientMaxAPDULengthAccepted,
+		SegmentationSupported: SegmentationSupportNo,
+		MaxSegmentsAccepted:   MaxSegmentsUnspecified,
+		Priority:              netprim.NetworkPriorityNormal,
+	}
+}
+
 // Client provides typed convenience methods for commonly used client services.
 //
 // It wraps existing ASE/B-X primitives and keeps transport/state-machine behavior
