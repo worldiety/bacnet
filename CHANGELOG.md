@@ -1,3 +1,17 @@
+## 0.2.0 (2026-06-17)
+
+### Feat
+
+- added error parsing to APDU
+
+### Fix
+
+- fixed wrong address semantics in netprim.Address
+
+### Refactor
+
+- refactored library structure: moved types, constants and functions from the bacnet package into a series of common packages, to prevent circular imports when creating a sensible public API in the bacnet package
+
 ## 0.1.0 (2026-06-16)
 
 ### Feat
