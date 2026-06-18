@@ -48,9 +48,11 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeAPDU: %v", err)
 	}
+
 	if outbound.Type != PDUTypeConfirmedRequest {
 		t.Fatalf("type = %v, want %v", outbound.Type, PDUTypeConfirmedRequest)
 	}
+
 	if outbound.ServiceChoice != ServiceChoiceReadPropertyMultiple {
 		t.Fatalf("service = %v, want %v", outbound.ServiceChoice, ServiceChoiceReadPropertyMultiple)
 	}
@@ -59,6 +61,7 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeReadPropertyMultipleRequestPayloadForTest: %v", err)
 	}
+
 	if len(decodedReq.Specs) != 1 || len(decodedReq.Specs[0].Properties) != 2 {
 		t.Fatalf("decoded specs = %#v", decodedReq.Specs)
 	}
@@ -90,9 +93,11 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	if res.err != nil {
 		t.Fatalf("ReadPropertyMultiple: %v", res.err)
 	}
+
 	if len(res.ack.Results) != 1 {
 		t.Fatalf("results len = %d, want 1", len(res.ack.Results))
 	}
+
 	if len(res.ack.Results[0].Results) != 1 {
 		t.Fatalf("property results len = %d, want 1", len(res.ack.Results[0].Results))
 	}
@@ -252,12 +257,6 @@ func decodeReadPropertyMultipleRequestPayloadForTest(payload []byte) (ReadProper
 	res := ReadPropertyMultipleRequest{Specs: make([]ReadAccessSpecification, 0)}
 
 	for cursor < len(payload) {
-		next, err := expectOpeningTag(payload, cursor, 0)
-		if err != nil {
-			return ReadPropertyMultipleRequest{}, err
-		}
-		cursor = next
-
 		_, objBytes, next, err := decodeExpectedContextPrimitive(payload, cursor, 0)
 		if err != nil {
 			return ReadPropertyMultipleRequest{}, err
@@ -306,11 +305,6 @@ func decodeReadPropertyMultipleRequestPayloadForTest(payload []byte) (ReadProper
 			spec.Properties = append(spec.Properties, pref)
 		}
 
-		next, err = expectClosingTag(payload, cursor, 0)
-		if err != nil {
-			return ReadPropertyMultipleRequest{}, err
-		}
-		cursor = next
 		res.Specs = append(res.Specs, spec)
 	}
 
@@ -320,7 +314,6 @@ func decodeReadPropertyMultipleRequestPayloadForTest(payload []byte) (ReadProper
 func encodeReadPropertyMultipleACKPayloadForTest(ack ReadPropertyMultipleACK) []byte {
 	out := make([]byte, 0, 64)
 	for _, objResult := range ack.Results {
-		out = append(out, encodeOpeningTag(0)...)
 		rawObj := uint32(objResult.ObjectIdentifier)
 		out = append(out, encodeContextPrimitive(0, []byte{byte(rawObj >> 24), byte(rawObj >> 16), byte(rawObj >> 8), byte(rawObj)})...)
 		out = append(out, encodeOpeningTag(1)...)
@@ -340,7 +333,6 @@ func encodeReadPropertyMultipleACKPayloadForTest(ack ReadPropertyMultipleACK) []
 			}
 		}
 		out = append(out, encodeClosingTag(1)...)
-		out = append(out, encodeClosingTag(0)...)
 	}
 	return out
 }

@@ -251,7 +251,6 @@ func encodeReadPropertyMultipleRequestPayload(req ReadPropertyMultipleRequest) (
 	out := make([]byte, 0, 64)
 
 	for _, spec := range req.Specs {
-		out = append(out, encodeOpeningTag(0)...)
 		objRaw := uint32(spec.ObjectIdentifier)
 		out = append(out, encodeContextPrimitive(0, []byte{byte(objRaw >> 24), byte(objRaw >> 16), byte(objRaw >> 8), byte(objRaw)})...)
 		out = append(out, encodeOpeningTag(1)...)
@@ -262,7 +261,6 @@ func encodeReadPropertyMultipleRequestPayload(req ReadPropertyMultipleRequest) (
 			}
 		}
 		out = append(out, encodeClosingTag(1)...)
-		out = append(out, encodeClosingTag(0)...)
 	}
 
 	return out, nil
@@ -273,12 +271,6 @@ func decodeReadPropertyMultipleACKPayload(payload []byte) (ReadPropertyMultipleA
 	ack := ReadPropertyMultipleACK{Results: make([]ReadAccessResult, 0)}
 
 	for cursor < len(payload) {
-		next, err := expectOpeningTag(payload, cursor, 0)
-		if err != nil {
-			return ReadPropertyMultipleACK{}, err
-		}
-		cursor = next
-
 		_, objBytes, next, err := decodeExpectedContextPrimitive(payload, cursor, 0)
 		if err != nil {
 			return ReadPropertyMultipleACK{}, err
@@ -311,11 +303,6 @@ func decodeReadPropertyMultipleACKPayload(payload []byte) (ReadPropertyMultipleA
 			cursor = nextCursor
 		}
 
-		next, err = expectClosingTag(payload, cursor, 0)
-		if err != nil {
-			return ReadPropertyMultipleACK{}, err
-		}
-		cursor = next
 		ack.Results = append(ack.Results, res)
 	}
 
