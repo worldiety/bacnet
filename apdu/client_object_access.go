@@ -357,14 +357,14 @@ func decodeReadPropertyResult(payload []byte, offset int) (ReadPropertyResult, i
 	return ReadPropertyResult{}, offset, fmt.Errorf("%w: expected opening tag 4 or 5", ErrDecodeFailure)
 }
 
-func decodeTaggedBody(payload []byte, offset int, tagNumber uint32) (int, []byte, error) {
+func decodeTaggedBody(payload []byte, offset int, tagNumber bacencoding.AppTag) (int, []byte, error) {
 	next, err := expectOpeningTag(payload, offset, tagNumber)
 	if err != nil {
 		return offset, nil, err
 	}
 
 	start := next
-	stack := []uint32{tagNumber}
+	stack := []bacencoding.AppTag{tagNumber}
 	cursor := next
 	for cursor < len(payload) {
 		tag, hdrLen, valueLen, err := bacencoding.ParseTag(payload[cursor:])
@@ -596,7 +596,7 @@ func encodeClosingTag(tagNumber uint8) []byte {
 	return bacencoding.EncodeClosingTag(tagNumber)
 }
 
-func isOpeningTagAt(payload []byte, offset int, tagNumber uint32) bool {
+func isOpeningTagAt(payload []byte, offset int, tagNumber bacencoding.AppTag) bool {
 	if offset >= len(payload) {
 		return false
 	}
@@ -607,7 +607,7 @@ func isOpeningTagAt(payload []byte, offset int, tagNumber uint32) bool {
 	return tag.Opening && tag.TagNumber == tagNumber
 }
 
-func isClosingTagAt(payload []byte, offset int, tagNumber uint32) bool {
+func isClosingTagAt(payload []byte, offset int, tagNumber bacencoding.AppTag) bool {
 	if offset >= len(payload) {
 		return false
 	}
@@ -618,7 +618,7 @@ func isClosingTagAt(payload []byte, offset int, tagNumber uint32) bool {
 	return tag.Closing && tag.TagNumber == tagNumber
 }
 
-func expectOpeningTag(payload []byte, offset int, tagNumber uint32) (int, error) {
+func expectOpeningTag(payload []byte, offset int, tagNumber bacencoding.AppTag) (int, error) {
 	next, err := bacencoding.ExpectOpeningTag(payload, offset, tagNumber)
 	if err != nil {
 		return offset, fmt.Errorf("%w: %v", ErrDecodeFailure, err)
@@ -626,7 +626,7 @@ func expectOpeningTag(payload []byte, offset int, tagNumber uint32) (int, error)
 	return next, nil
 }
 
-func expectClosingTag(payload []byte, offset int, tagNumber uint32) (int, error) {
+func expectClosingTag(payload []byte, offset int, tagNumber bacencoding.AppTag) (int, error) {
 	next, err := bacencoding.ExpectClosingTag(payload, offset, tagNumber)
 	if err != nil {
 		return offset, fmt.Errorf("%w: %v", ErrDecodeFailure, err)

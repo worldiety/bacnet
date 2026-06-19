@@ -395,7 +395,7 @@ func decodeUnconfirmedCOVNotificationMultiplePayload(payload []byte) (Unconfirme
 	return out, nil
 }
 
-func decodeCOVPropertyValueList(payload []byte, offset int, listTag uint32) (int, []COVPropertyValue, error) {
+func decodeCOVPropertyValueList(payload []byte, offset int, listTag bacencoding.AppTag) (int, []COVPropertyValue, error) {
 	next, err := expectOpeningTag(payload, offset, listTag)
 	if err != nil {
 		return offset, nil, err
@@ -482,7 +482,7 @@ func decodeCOVPropertyValue(payload []byte, offset int) (COVPropertyValue, int, 
 	return out, offset, nil
 }
 
-func decodeExpectedContextObjectIdentifier(payload []byte, offset int, expectedTag uint32) (types.ObjectIdentifier, int, error) {
+func decodeExpectedContextObjectIdentifier(payload []byte, offset int, expectedTag bacencoding.AppTag) (types.ObjectIdentifier, int, error) {
 	_, objBytes, next, err := decodeExpectedContextPrimitive(payload, offset, expectedTag)
 	if err != nil {
 		return 0, offset, err

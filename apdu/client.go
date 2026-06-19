@@ -707,7 +707,7 @@ func decodeReadPropertyACKPayload(payload []byte) (ReadPropertyACK, error) {
 	cursor += hdrLen
 
 	valueStart := cursor
-	stack := []uint32{3}
+	stack := []bacencoding.AppTag{3}
 
 	for cursor < len(payload) {
 		t, hLen, vLen, parseErr := bacencoding.ParseTag(payload[cursor:])
@@ -744,7 +744,7 @@ func decodeReadPropertyACKPayload(payload []byte) (ReadPropertyACK, error) {
 	return ReadPropertyACK{}, fmt.Errorf("%w: missing closing-tag(3)", ErrDecodeFailure)
 }
 
-func decodeExpectedContextPrimitive(payload []byte, offset int, expectedTag uint32) (tagInfo, []byte, int, error) {
+func decodeExpectedContextPrimitive(payload []byte, offset int, expectedTag bacencoding.AppTag) (tagInfo, []byte, int, error) {
 	tag, value, next, err := bacencoding.DecodeExpectedContextPrimitive(payload, offset, expectedTag)
 	if err != nil {
 		return tagInfo{}, nil, offset, fmt.Errorf("%w: %v", ErrDecodeFailure, err)
@@ -752,7 +752,7 @@ func decodeExpectedContextPrimitive(payload []byte, offset int, expectedTag uint
 	return tagInfo{tagNumber: tag.TagNumber, contextSpecific: tag.ContextSpecific, opening: tag.Opening, closing: tag.Closing}, value, next, nil
 }
 
-func decodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag uint32) (tagInfo, []byte, int, error) {
+func decodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag bacencoding.AppTag) (tagInfo, []byte, int, error) {
 	tag, value, next, err := bacencoding.DecodeExpectedApplicationPrimitive(payload, offset, expectedTag)
 	if err != nil {
 		return tagInfo{}, nil, offset, fmt.Errorf("%w: %v", ErrDecodeFailure, err)
@@ -760,7 +760,7 @@ func decodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag 
 	return tagInfo{tagNumber: tag.TagNumber, contextSpecific: tag.ContextSpecific, opening: tag.Opening, closing: tag.Closing}, value, next, nil
 }
 
-func looksLikeContextPrimitiveTag(b byte, tagNumber uint32) bool {
+func looksLikeContextPrimitiveTag(b byte, tagNumber bacencoding.AppTag) bool {
 	return bacencoding.LooksLikeContextPrimitiveTag(b, tagNumber)
 }
 
@@ -787,7 +787,7 @@ func decodeUnsigned(raw []byte) (uint32, error) {
 }
 
 type tagInfo struct {
-	tagNumber       uint32
+	tagNumber       bacencoding.AppTag
 	contextSpecific bool
 	opening         bool
 	closing         bool

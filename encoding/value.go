@@ -65,7 +65,7 @@ func EncodeApplicationPrimitive(tagNumber uint8, value []byte) []byte {
 
 // DecodeExpectedApplicationPrimitive decodes one application primitive at offset
 // and validates the expected application tag number.
-func DecodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag uint32) (Tag, []byte, int, error) {
+func DecodeExpectedApplicationPrimitive(payload []byte, offset int, expectedTag AppTag) (Tag, []byte, int, error) {
 	if offset >= len(payload) {
 		return Tag{}, nil, offset, fmt.Errorf("%w: missing application tag %d", ErrDecodeFailure, expectedTag)
 	}
@@ -456,18 +456,16 @@ func EncodeDateTimeValue(v BACnetDateTime) ([]byte, error) {
 	}
 	timeBytes := EncodeTimeValue(v.Time)
 
-	const dateTagNumber = 10
-	const timeTagNumber = 11
 	out := make([]byte, 0, 10)
-	out = append(out, EncodeApplicationPrimitive(dateTagNumber, dateBytes)...)
-	out = append(out, EncodeApplicationPrimitive(timeTagNumber, timeBytes)...)
+	out = append(out, EncodeApplicationPrimitive(uint8(AppTagDate), dateBytes)...)
+	out = append(out, EncodeApplicationPrimitive(uint8(AppTagTime), timeBytes)...)
 	return out, nil
 }
 
 // DecodeDateTimeValue decodes 8 bytes (application Date tag + application Time tag) into a BACnetDateTime.
 func DecodeDateTimeValue(raw []byte) (BACnetDateTime, error) {
-	const dateTagNumber = 10
-	const timeTagNumber = 11
+	const dateTagNumber AppTag = 10
+	const timeTagNumber AppTag = 11
 
 	_, dateBytes, next, err := DecodeExpectedApplicationPrimitive(raw, 0, dateTagNumber)
 	if err != nil {

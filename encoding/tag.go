@@ -8,7 +8,7 @@ import (
 
 // Tag describes one parsed BACnet tag header.
 type Tag struct {
-	TagNumber       uint32
+	TagNumber       AppTag
 	ContextSpecific bool
 	Opening         bool
 	Closing         bool
@@ -27,12 +27,12 @@ func ParseTag(raw []byte) (Tag, int, int, error) {
 	lvt := b0 & 0x07
 	offset := 1
 
-	tagNumber := tagNibble
+	tagNumber := AppTag(tagNibble)
 	if tagNibble == 0x0F {
 		if len(raw) < 2 {
 			return Tag{}, 0, 0, fmt.Errorf("%w: missing extended tag number", ErrDecodeFailure)
 		}
-		tagNumber = uint32(raw[1])
+		tagNumber = AppTag(raw[1])
 		offset++
 	}
 
@@ -132,13 +132,13 @@ func EncodeContextPrimitive(tagNumber uint8, value []byte) []byte {
 
 // LooksLikeContextPrimitiveTag reports whether b can represent the first byte
 // of a short-form context-specific primitive tag with the given tag number.
-func LooksLikeContextPrimitiveTag(b byte, tagNumber uint32) bool {
-	return ((b>>3)&0x01) == 1 && uint32(b>>4) == tagNumber && (b&0x07) <= 5
+func LooksLikeContextPrimitiveTag(b byte, tagNumber AppTag) bool {
+	return ((b>>3)&0x01) == 1 && AppTag(b>>4) == tagNumber && (b&0x07) <= 5
 }
 
 // DecodeExpectedContextPrimitive decodes one context primitive at offset and
 // validates the expected context tag number.
-func DecodeExpectedContextPrimitive(payload []byte, offset int, expectedTag uint32) (Tag, []byte, int, error) {
+func DecodeExpectedContextPrimitive(payload []byte, offset int, expectedTag AppTag) (Tag, []byte, int, error) {
 	if offset >= len(payload) {
 		return Tag{}, nil, offset, fmt.Errorf("%w: missing context tag %d", ErrDecodeFailure, expectedTag)
 	}
@@ -162,7 +162,7 @@ func DecodeExpectedContextPrimitive(payload []byte, offset int, expectedTag uint
 }
 
 // ExpectOpeningTag validates and consumes an opening tag at offset.
-func ExpectOpeningTag(payload []byte, offset int, tagNumber uint32) (int, error) {
+func ExpectOpeningTag(payload []byte, offset int, tagNumber AppTag) (int, error) {
 	if offset >= len(payload) {
 		return offset, fmt.Errorf("%w: missing opening tag %d", ErrDecodeFailure, tagNumber)
 	}
@@ -177,7 +177,7 @@ func ExpectOpeningTag(payload []byte, offset int, tagNumber uint32) (int, error)
 }
 
 // ExpectClosingTag validates and consumes a closing tag at offset.
-func ExpectClosingTag(payload []byte, offset int, tagNumber uint32) (int, error) {
+func ExpectClosingTag(payload []byte, offset int, tagNumber AppTag) (int, error) {
 	if offset >= len(payload) {
 		return offset, fmt.Errorf("%w: missing closing tag %d", ErrDecodeFailure, tagNumber)
 	}
