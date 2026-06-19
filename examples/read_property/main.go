@@ -15,6 +15,7 @@ import (
 	baclog "go.wdy.de/bacnet/common/log"
 	"go.wdy.de/bacnet/common/netprim"
 	"go.wdy.de/bacnet/common/types"
+	"go.wdy.de/bacnet/encoding"
 )
 
 func main() {
@@ -63,7 +64,7 @@ func runRead(args []string) error {
 		return err
 	}
 
-	analogInput1, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 1)
+	analogInput1, _ := types.NewObjectIdentifier(types.ObjectTypeAnalogInput, 250)
 	device1234, _ := types.NewObjectIdentifier(types.ObjectTypeDevice, 1234)
 
 	req, err := apdu.NewReadPropertyMultipleRequest([]apdu.ReadAccessSpecification{
@@ -101,21 +102,25 @@ func runRead(args []string) error {
 
 	for _, accessResult := range ack.Results {
 
-		fmt.Printf("%s", accessResult.ObjectIdentifier.String())
+		fmt.Printf("Object ID: %s,", accessResult.ObjectIdentifier.String())
 
 		for _, propResult := range accessResult.Results {
 			if propResult.Error != nil {
 				// Per-property error (device returned an error for this specific property).
-				fmt.Printf("  %s: per-property error (raw: %x)\n",
+				fmt.Printf("; %s: per-property error (raw: %x)\n",
 					propResult.PropertyIdentifier, propResult.Error)
 				continue
 			}
-			// PropertyValue holds the raw BACnet TLV bytes of the property value.
-			// Decode with go.wdy.de/bacnet/encoding (e.g. DecodeCharacterStringASCIIValue
-			// for object-name, DecodeReal for present-value on an analog object).
-			fmt.Printf("  %s: raw bytes %x\n",
-				propResult.PropertyIdentifier, propResult.PropertyValue)
+
+			val, _, err := encoding.DecodeApplicationValue(propResult.PropertyValue, 0)
+			if err != nil {
+				fmt.Printf("; %s: per-property error (raw: %x)\n")
+			}
+
+			fmt.Printf("  %s: %v", propResult.PropertyIdentifier, val)
 		}
+
+		fmt.Printf("\n")
 	}
 
 	return nil
