@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
-	bacencoding "go.wdy.de/bacnet/encoding"
+	"github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
+	bacencoding "github.com/worldiety/bacnet/encoding"
 )
 
 // DeviceCommunicationControlEnableDisable selects the communication mode.

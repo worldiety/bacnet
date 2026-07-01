@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/netip"
 
-	"go.wdy.de/bacnet/apdu"
-	"go.wdy.de/bacnet/common/log"
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/npdu"
+	"github.com/worldiety/bacnet/apdu"
+	"github.com/worldiety/bacnet/common/log"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/npdu"
 )
 
 // Stack bridges the BACnet/IP transport layer and the APDU service element (ASE).

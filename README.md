@@ -117,8 +117,8 @@ import (
 	"net/netip"
 	"time"
 
-	"go.wdy.de/bacnet/apdu"
-	"go.wdy.de/bacnet/bip"
+	"github.com/worldiety/bacnet/apdu"
+	"github.com/worldiety/bacnet/bip"
 )
 
 func main() {
@@ -182,5 +182,5 @@ The project is in a prototype phase. The API is usable and exercised by tests,
 but may change as BACnet coverage expands. The module path is:
 
 ```
-module go.wdy.de/bacnet
+module github.com/worldiety/bacnet
 ```

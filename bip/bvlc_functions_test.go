@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"testing"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
 )
 
 func mustBdtEntryForBVLCFunctionTest(t *testing.T, addr string, mask net.IPMask) BdtEntry {

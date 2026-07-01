@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"go.wdy.de/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/errors"
 )
 
 const (

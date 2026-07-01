@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/common/types"
-	bacencoding "go.wdy.de/bacnet/encoding"
-	"go.wdy.de/bacnet/npdu"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/types"
+	bacencoding "github.com/worldiety/bacnet/encoding"
+	"github.com/worldiety/bacnet/npdu"
 )
 
 func TestNewClient(t *testing.T) {

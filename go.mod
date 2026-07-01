@@ -1,3 +1,3 @@
-module go.wdy.de/bacnet
+module github.com/worldiety/bacnet
 
 go 1.26.2

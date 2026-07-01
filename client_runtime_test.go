@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet/apdu"
-	"go.wdy.de/bacnet/bip"
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/common/types"
-	"go.wdy.de/bacnet/npdu"
+	"github.com/worldiety/bacnet/apdu"
+	"github.com/worldiety/bacnet/bip"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/types"
+	"github.com/worldiety/bacnet/npdu"
 )
 
 type queuedResponse struct {

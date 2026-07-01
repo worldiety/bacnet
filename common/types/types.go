@@ -3,8 +3,8 @@ package types
 import (
 	"fmt"
 
-	"go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // DeviceInstance identifies a BACnet device object instance.

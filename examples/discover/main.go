@@ -9,10 +9,10 @@ import (
 	"os"
 	"time"
 
-	"go.wdy.de/bacnet"
-	"go.wdy.de/bacnet/apdu"
-	baclog "go.wdy.de/bacnet/common/log"
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet"
+	"github.com/worldiety/bacnet/apdu"
+	baclog "github.com/worldiety/bacnet/common/log"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 func main() {

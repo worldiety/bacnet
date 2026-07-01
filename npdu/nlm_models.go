@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // NetworkLayerMessageModel is a typed BACnet network-layer-message payload model.

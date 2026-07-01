@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 func TestNewDeviceInstance(t *testing.T) {

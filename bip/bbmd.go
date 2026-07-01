@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"go.wdy.de/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/errors"
 )
 
 // BBMD is a BACnet Broadcast Management Device as defined in Annex J of ANSI/ASHRAE 135.

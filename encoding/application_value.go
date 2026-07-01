@@ -3,7 +3,7 @@ package encoding
 import (
 	"fmt"
 
-	"go.wdy.de/bacnet/common/types"
+	"github.com/worldiety/bacnet/common/types"
 )
 
 // AppTag is the BACnet application tag number (clause 20.2, Table 20-1).

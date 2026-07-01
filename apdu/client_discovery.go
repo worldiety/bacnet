@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/log"
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/log"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // DiscoverRequest configures a Who-Is discovery window.

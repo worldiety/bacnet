@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"slices"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/common/types"
-	bacencoding "go.wdy.de/bacnet/encoding"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/types"
+	bacencoding "github.com/worldiety/bacnet/encoding"
 )
 
 // RemoteErrorAPDU indicates the peer completed a confirmed request with an Error APDU.

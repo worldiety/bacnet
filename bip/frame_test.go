@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
 )
 
 func TestNewFrameCopiesPayload(t *testing.T) {

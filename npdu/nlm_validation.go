@@ -1,7 +1,7 @@
 package npdu
 
 import (
-	"go.wdy.de/bacnet/common/log"
+	"github.com/worldiety/bacnet/common/log"
 )
 
 func decodeAndNormalizeNetworkLayerMessagePayload(header NetworkLayerMessageHeader, payload []byte) ([]byte, error) {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // multiWriteConn extends fakeDatagramConn to capture multiple outbound datagrams

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/netip"
 
-	"go.wdy.de/bacnet/apdu"
-	"go.wdy.de/bacnet/bip"
-	"go.wdy.de/bacnet/common/log"
+	"github.com/worldiety/bacnet/apdu"
+	"github.com/worldiety/bacnet/bip"
+	"github.com/worldiety/bacnet/common/log"
 )
 
 // ClientRuntimeConfig configures the high-level BACnet/IP client runtime.

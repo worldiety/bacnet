@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"go.wdy.de/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/errors"
 )
 
 // Address identifies a BACnet station on a local or remote network.

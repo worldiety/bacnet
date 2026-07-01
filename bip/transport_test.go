@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	bacneterrors "go.wdy.de/bacnet/common/errors"
+	bacneterrors "github.com/worldiety/bacnet/common/errors"
 )
 
 type fakeDatagramConn struct {

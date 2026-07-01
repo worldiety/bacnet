@@ -5,10 +5,10 @@ import (
 	"sort"
 	"time"
 
-	"go.wdy.de/bacnet/common/errors"
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/internal/util"
-	"go.wdy.de/bacnet/npdu"
+	"github.com/worldiety/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/internal/util"
+	"github.com/worldiety/bacnet/npdu"
 )
 
 func (r *routerImpl) ensureNetworkRoutesLocked(network netprim.NetworkNumber) map[PortID]routeRecord {

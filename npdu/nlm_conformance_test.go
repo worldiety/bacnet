@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 type nlmConformanceVector struct {

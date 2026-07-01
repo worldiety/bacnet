@@ -3,7 +3,7 @@ package apdu
 import (
 	"testing"
 
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // --- NetworkPriority ---

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"go.wdy.de/bacnet/common/types"
+	"github.com/worldiety/bacnet/common/types"
 )
 
 // TestDecodeApplicationValue covers each of the 13 application tag types plus

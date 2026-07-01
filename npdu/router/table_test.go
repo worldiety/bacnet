@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 type fakeClock struct {

@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"go.wdy.de/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/errors"
 )
 
 // Frame is a decoded Annex J BVLC frame.

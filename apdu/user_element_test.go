@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.wdy.de/bacnet/common/netprim"
-	"go.wdy.de/bacnet/npdu"
+	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/npdu"
 )
 
 // --- NewUserElement ---

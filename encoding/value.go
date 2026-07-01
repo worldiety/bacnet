@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"go.wdy.de/bacnet/common/types"
+	"github.com/worldiety/bacnet/common/types"
 )
 
 // EncodeUnsigned encodes a BACnet unsigned integer in the shortest form.

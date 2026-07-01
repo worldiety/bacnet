@@ -3,7 +3,7 @@ package apdu
 import (
 	"fmt"
 
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 // MaxSegmentsAccepted is the 3-bit field that encodes the maximum number of APDU

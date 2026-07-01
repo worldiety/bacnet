@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"go.wdy.de/bacnet/common/errors"
+	"github.com/worldiety/bacnet/common/errors"
 )
 
 type BVLCResultCode uint16

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"go.wdy.de/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/netprim"
 )
 
 func TestDecodeNetworkLayerMessageModel(t *testing.T) {
