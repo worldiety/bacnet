@@ -114,7 +114,9 @@ func runRead(args []string) error {
 
 			val, _, err := encoding.DecodeApplicationValue(propResult.PropertyValue, 0)
 			if err != nil {
-				fmt.Printf("; %s: per-property error (raw: %x)\n")
+				fmt.Printf("; %s: decode error (raw: %x)\n",
+					propResult.PropertyIdentifier, propResult.PropertyValue)
+				continue
 			}
 
 			fmt.Printf("  %s: %v", propResult.PropertyIdentifier, val)

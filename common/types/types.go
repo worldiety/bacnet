@@ -114,18 +114,20 @@ func (id ObjectIdentifier) String() string {
 type PropertyIdentifier uint32
 
 const (
-	PropertyIdentifierAckedTransitions           PropertyIdentifier = 0
-	PropertyIdentifierObjectIdentifier           PropertyIdentifier = 75
-	PropertyIdentifierObjectName                 PropertyIdentifier = 77
-	PropertyIdentifierObjectType                 PropertyIdentifier = 79
-	PropertyIdentifierPresentValue               PropertyIdentifier = 85
-	PropertyIdentifierDescription                PropertyIdentifier = 28
-	PropertyIdentifierStatusFlags                PropertyIdentifier = 111
-	PropertyIdentifierUnits                      PropertyIdentifier = 117
-	PropertyIdentifierVendorName                 PropertyIdentifier = 121
-	PropertyIdentifierProtocolVersion            PropertyIdentifier = 98
-	PropertyIdentifierProtocolRevision           PropertyIdentifier = 96
-	PropertyIdentifierApplicationSoftwareVersion PropertyIdentifier = 12
+	PropertyIdentifierAckedTransitions             PropertyIdentifier = 0
+	PropertyIdentifierObjectIdentifier             PropertyIdentifier = 75
+	PropertyIdentifierObjectName                   PropertyIdentifier = 77
+	PropertyIdentifierObjectType                   PropertyIdentifier = 79
+	PropertyIdentifierPresentValue                 PropertyIdentifier = 85
+	PropertyIdentifierDescription                  PropertyIdentifier = 28
+	PropertyIdentifierStatusFlags                  PropertyIdentifier = 111
+	PropertyIdentifierUnits                        PropertyIdentifier = 117
+	PropertyIdentifierVendorName                   PropertyIdentifier = 121
+	PropertyIdentifierProtocolObjectTypesSupported PropertyIdentifier = 96
+	PropertyIdentifierProtocolServicesSupported    PropertyIdentifier = 97
+	PropertyIdentifierProtocolVersion              PropertyIdentifier = 98
+	PropertyIdentifierProtocolRevision             PropertyIdentifier = 139
+	PropertyIdentifierApplicationSoftwareVersion   PropertyIdentifier = 12
 )
 
 func (p PropertyIdentifier) String() string {
@@ -144,6 +146,10 @@ func (p PropertyIdentifier) String() string {
 		return "object-type"
 	case PropertyIdentifierPresentValue:
 		return "present-value"
+	case PropertyIdentifierProtocolObjectTypesSupported:
+		return "protocol-object-types-supported"
+	case PropertyIdentifierProtocolServicesSupported:
+		return "protocol-services-supported"
 	case PropertyIdentifierProtocolRevision:
 		return "protocol-revision"
 	case PropertyIdentifierProtocolVersion:

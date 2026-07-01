@@ -91,6 +91,8 @@ func TestPropertyIdentifierString(t *testing.T) {
 		{name: "object name", input: PropertyIdentifierObjectName, want: "object-name"},
 		{name: "object type", input: PropertyIdentifierObjectType, want: "object-type"},
 		{name: "present value", input: PropertyIdentifierPresentValue, want: "present-value"},
+		{name: "protocol object types supported", input: PropertyIdentifierProtocolObjectTypesSupported, want: "protocol-object-types-supported"},
+		{name: "protocol services supported", input: PropertyIdentifierProtocolServicesSupported, want: "protocol-services-supported"},
 		{name: "protocol revision", input: PropertyIdentifierProtocolRevision, want: "protocol-revision"},
 		{name: "protocol version", input: PropertyIdentifierProtocolVersion, want: "protocol-version"},
 		{name: "status flags", input: PropertyIdentifierStatusFlags, want: "status-flags"},
@@ -103,6 +105,40 @@ func TestPropertyIdentifierString(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.input.String(); got != tt.want {
 				t.Fatalf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPropertyIdentifierStandardValues pins the numeric enumeration values to
+// the ASHRAE 135 standard. These guard against transcription errors such as
+// confusing protocol-revision (139) with protocol-object-types-supported (96).
+func TestPropertyIdentifierStandardValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		input PropertyIdentifier
+		want  uint32
+	}{
+		{"acked-transitions", PropertyIdentifierAckedTransitions, 0},
+		{"application-software-version", PropertyIdentifierApplicationSoftwareVersion, 12},
+		{"description", PropertyIdentifierDescription, 28},
+		{"object-identifier", PropertyIdentifierObjectIdentifier, 75},
+		{"object-name", PropertyIdentifierObjectName, 77},
+		{"object-type", PropertyIdentifierObjectType, 79},
+		{"present-value", PropertyIdentifierPresentValue, 85},
+		{"protocol-object-types-supported", PropertyIdentifierProtocolObjectTypesSupported, 96},
+		{"protocol-services-supported", PropertyIdentifierProtocolServicesSupported, 97},
+		{"protocol-version", PropertyIdentifierProtocolVersion, 98},
+		{"status-flags", PropertyIdentifierStatusFlags, 111},
+		{"units", PropertyIdentifierUnits, 117},
+		{"vendor-name", PropertyIdentifierVendorName, 121},
+		{"protocol-revision", PropertyIdentifierProtocolRevision, 139},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if uint32(tt.input) != tt.want {
+				t.Fatalf("%s = %d, want %d", tt.name, uint32(tt.input), tt.want)
 			}
 		})
 	}

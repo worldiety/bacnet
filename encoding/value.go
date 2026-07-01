@@ -3,6 +3,7 @@ package encoding
 import (
 	"fmt"
 	"math"
+	"unicode/utf8"
 
 	"github.com/worldiety/bacnet/common/types"
 )
@@ -103,11 +104,16 @@ func DecodeObjectIdentifierValue(raw []byte) (types.ObjectIdentifier, error) {
 	return obj, nil
 }
 
-// EncodeCharacterStringASCIIValue encodes an ASCII character-string value
+// EncodeCharacterStringASCIIValue encodes a UTF-8 character-string value
 // (character set 0 + bytes).
+//
+// BACnet character set 0 is UTF-8 (ANSI/ASHRAE 135-2008 and later; earlier
+// revisions specified ANSI X3.4 / ASCII, of which UTF-8 is a superset). Go
+// strings are UTF-8, so any valid Go string is encoded as-is. Strings that are
+// not valid UTF-8 are rejected.
 func EncodeCharacterStringASCIIValue(v string) ([]byte, error) {
-	if !IsASCIIString(v) {
-		return nil, fmt.Errorf("%w: non-ascii character-string", ErrEncodeFailure)
+	if !utf8.ValidString(v) {
+		return nil, fmt.Errorf("%w: character-string is not valid UTF-8", ErrEncodeFailure)
 	}
 	out := make([]byte, 0, len(v)+1)
 	out = append(out, 0x00)
@@ -115,8 +121,13 @@ func EncodeCharacterStringASCIIValue(v string) ([]byte, error) {
 	return out, nil
 }
 
-// DecodeCharacterStringASCIIValue decodes an ASCII character-string value
+// DecodeCharacterStringASCIIValue decodes a UTF-8 character-string value
 // (character set 0 + bytes).
+//
+// Only character set 0 (UTF-8) is supported. ASCII decodes unchanged since it
+// is a subset of UTF-8; non-ASCII UTF-8 (e.g. accented characters commonly
+// emitted by field devices) is decoded correctly. Byte sequences that are not
+// valid UTF-8 are rejected.
 func DecodeCharacterStringASCIIValue(raw []byte) (string, error) {
 	if len(raw) == 0 {
 		return "", fmt.Errorf("%w: empty character-string", ErrDecodeFailure)
@@ -125,8 +136,8 @@ func DecodeCharacterStringASCIIValue(raw []byte) (string, error) {
 		return "", fmt.Errorf("%w: unsupported character set %d", ErrDecodeFailure, raw[0])
 	}
 	v := string(raw[1:])
-	if !IsASCIIString(v) {
-		return "", fmt.Errorf("%w: non-ascii character-string", ErrDecodeFailure)
+	if !utf8.ValidString(v) {
+		return "", fmt.Errorf("%w: character-string is not valid UTF-8", ErrDecodeFailure)
 	}
 	return v, nil
 }

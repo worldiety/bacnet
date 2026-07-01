@@ -93,11 +93,11 @@ func propByNameOrZero(name string) types.PropertyIdentifier {
 
 // decodeAndFormat decodes a raw application-tagged value and formats it.
 //
-// The library's character-string decoder only accepts 7-bit ASCII in character
-// set 0. Real-world field devices frequently store UTF-8 (e.g. German umlauts)
-// in character set 0, which the strict decoder rejects. To keep the tool usable
-// for commissioning, on decode failure we attempt a best-effort recovery of a
-// character string ourselves before falling back to a hex dump.
+// The library decodes character set 0 as UTF-8 (the standard charset), so
+// ASCII and UTF-8 strings decode directly. As a last resort, if the library
+// still cannot decode a character string (e.g. a non-conformant device that
+// emits Latin-1 bytes in charset 0), we attempt a best-effort recovery before
+// falling back to a hex dump so the operator always sees something usable.
 func decodeAndFormat(raw []byte, pid types.PropertyIdentifier) string {
 	if len(raw) == 0 {
 		return "(empty)"
@@ -113,9 +113,10 @@ func decodeAndFormat(raw []byte, pid types.PropertyIdentifier) string {
 }
 
 // recoverCharacterString attempts to decode a single application-tagged
-// character string (tag 7) from raw, tolerating UTF-8 / Latin-1 content in
-// character set 0 that the strict library decoder rejects. It returns the
-// quoted string and true on success.
+// character string (tag 7) from raw as a last resort. The library already
+// decodes valid UTF-8 in character set 0; this handles non-conformant devices
+// that place Latin-1 (or otherwise non-UTF-8) bytes in charset 0. It returns
+// the quoted string and true on success.
 func recoverCharacterString(raw []byte) (string, bool) {
 	tag, hLen, vLen, err := bacencoding.ParseTag(raw)
 	if err != nil {
@@ -132,7 +133,7 @@ func recoverCharacterString(raw []byte) (string, bool) {
 	body := v[1:]
 
 	switch charset {
-	case 0: // ANSI X3.4 per spec; UTF-8 in practice on many devices.
+	case 0: // UTF-8 per spec; some devices emit Latin-1 here.
 		if utf8.Valid(body) {
 			return strconv.Quote(string(body)), true
 		}

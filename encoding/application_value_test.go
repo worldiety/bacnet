@@ -233,13 +233,43 @@ func TestEncodeApplicationValue(t *testing.T) {
 }
 
 // TestEncodeApplicationValueError checks that EncodeApplicationValue rejects
-// non-ASCII character strings.
+// character strings that are not valid UTF-8 (character set 0 is UTF-8).
 func TestEncodeApplicationValueError(t *testing.T) {
-	_, err := EncodeApplicationValue(AppCharacterString("\xFF not ascii"))
+	_, err := EncodeApplicationValue(AppCharacterString("\xFF not utf-8"))
 	if err == nil {
-		t.Fatal("want error for non-ASCII CharacterString, got nil")
+		t.Fatal("want error for invalid-UTF-8 CharacterString, got nil")
 	}
 	if !errors.Is(err, ErrEncodeFailure) {
 		t.Errorf("error should wrap ErrEncodeFailure, got: %v", err)
+	}
+}
+
+// TestCharacterStringUTF8RoundTrip verifies that non-ASCII UTF-8 character
+// strings (character set 0), such as accented characters commonly emitted by
+// field devices, encode and decode losslessly.
+func TestCharacterStringUTF8RoundTrip(t *testing.T) {
+	inputs := []string{
+		"Küche / HWR",
+		"Zürich",
+		"温度",
+		"plain ascii",
+		"",
+	}
+	for _, in := range inputs {
+		enc, err := EncodeApplicationValue(AppCharacterString(in))
+		if err != nil {
+			t.Fatalf("encode %q: %v", in, err)
+		}
+		val, _, err := DecodeApplicationValue(enc, 0)
+		if err != nil {
+			t.Fatalf("decode %q: %v", in, err)
+		}
+		got, ok := val.(AppCharacterString)
+		if !ok {
+			t.Fatalf("decoded value for %q has type %T, want AppCharacterString", in, val)
+		}
+		if string(got) != in {
+			t.Fatalf("round-trip mismatch: got %q, want %q", string(got), in)
+		}
 	}
 }

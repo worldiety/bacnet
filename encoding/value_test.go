@@ -264,29 +264,29 @@ func TestEncodeDecodeEnumerated(t *testing.T) {
 // TestEncodeDecodeBitString verifies BitString roundtrip including unused-bit handling.
 func TestEncodeDecodeBitString(t *testing.T) {
 	tests := []struct {
-		name  string
-		bits  []bool
-		want  []byte
+		name string
+		bits []bool
+		want []byte
 	}{
 		{
-			name:  "empty",
-			bits:  []bool{},
-			want:  []byte{0x00},
+			name: "empty",
+			bits: []bool{},
+			want: []byte{0x00},
 		},
 		{
-			name:  "3 bits firstItem+moreItems",
-			bits:  []bool{true, false, true},
-			want:  []byte{0x05, 0xA0}, // unused=5, data=10100000
+			name: "3 bits firstItem+moreItems",
+			bits: []bool{true, false, true},
+			want: []byte{0x05, 0xA0}, // unused=5, data=10100000
 		},
 		{
-			name:  "8 bits all set",
-			bits:  []bool{true, true, true, true, true, true, true, true},
-			want:  []byte{0x00, 0xFF},
+			name: "8 bits all set",
+			bits: []bool{true, true, true, true, true, true, true, true},
+			want: []byte{0x00, 0xFF},
 		},
 		{
-			name:  "9 bits",
-			bits:  []bool{true, false, false, false, false, false, false, false, true},
-			want:  []byte{0x07, 0x80, 0x80}, // unused=7, data=10000000 10000000
+			name: "9 bits",
+			bits: []bool{true, false, false, false, false, false, false, false, true},
+			want: []byte{0x07, 0x80, 0x80}, // unused=7, data=10000000 10000000
 		},
 	}
 	for _, tt := range tests {
