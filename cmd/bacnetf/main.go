@@ -89,8 +89,8 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 
 // registerCommonFlags registers the flags shared by every subcommand.
 func registerCommonFlags(fs *flag.FlagSet, opts *commonOptions) {
-	fs.StringVar(&opts.iface, "iface", "", "local IPv4 address of the interface to bind (default: all interfaces)")
-	fs.StringVar(&opts.bcast, "bcast", "", "broadcast IPv4 for Who-Is (default: auto-detect from interface)")
+	fs.StringVar(&opts.iface, "iface", "", "local IPv4 to bind (default: all interfaces; recommended for discovery so broadcast I-Am replies are received)")
+	fs.StringVar(&opts.bcast, "bcast", "", "broadcast IPv4 for Who-Is (default: auto-detect every interface)")
 	fs.DurationVar(&opts.timeout, "timeout", 10*time.Second, "per-request timeout (raise for slow MS/TP lines)")
 	fs.IntVar(&opts.retries, "retries", 3, "APDU retransmission attempts")
 	fs.DurationVar(&opts.delay, "delay", 0, "delay inserted between sequential requests (gentle pacing for MS/TP)")

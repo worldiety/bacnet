@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/worldiety/bacnet/apdu"
@@ -13,7 +15,8 @@ import (
 
 // cmdDiscover implements: bacnetf discover [flags]
 //
-// It sends a single Who-Is broadcast and collects I-Am responses for a bounded
+// It sends a Who-Is to every broadcast-capable interface (or the single
+// --bcast/--iface target if given) and collects I-Am responses for a bounded
 // window, then prints the devices found. This is the only command that
 // broadcasts; all others are unicast to a single device.
 func cmdDiscover(args []string) error {
@@ -26,7 +29,8 @@ func cmdDiscover(args []string) error {
 	highLimit := fs.Int("high", -1, "optional highest device instance to query (-1 = unbounded)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf discover [flags]\n\n")
-		fmt.Fprintf(fs.Output(), "Broadcast Who-Is and list responding devices.\n\n")
+		fmt.Fprintf(fs.Output(), "Broadcast Who-Is and list responding devices.\n")
+		fmt.Fprintf(fs.Output(), "By default a Who-Is is sent on every broadcast-capable interface.\n\n")
 		fs.PrintDefaults()
 	}
 	pos, err := parseArgs(fs, args)
@@ -49,38 +53,79 @@ func cmdDiscover(args []string) error {
 	}
 	defer a.Close()
 
-	dst, err := a.broadcastAddress()
+	targets, err := a.broadcastTargets()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Discovering on %s (window %s)...\n", dst.AddrPort, window.String())
+	// Collect I-Am responses via a registered handler so that a single
+	// collection window can span Who-Is requests sent to several networks.
+	var (
+		mu      sync.Mutex
+		seen    = make(map[string]struct{})
+		devices []apdu.IAmIndication
+	)
+	err = a.client().RegisterIAmHandler(func(_ context.Context, ind apdu.IAmIndication) error {
+		key := fmt.Sprintf("%d|%d|%s", ind.DeviceIdentifier, ind.Source.Network, ind.Source.AddrPort)
+		mu.Lock()
+		if _, dup := seen[key]; !dup {
+			seen[key] = struct{}{}
+			devices = append(devices, ind)
+		}
+		mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("register i-am handler: %w", err)
+	}
+
+	labels := make([]string, 0, len(targets))
+	for _, t := range targets {
+		labels = append(labels, fmt.Sprintf("%s (%s)", t.Address.AddrPort, t.Label))
+	}
+	fmt.Printf("Discovering on %s for %s...\n", strings.Join(labels, ", "), window.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), *window+2*time.Second)
 	defer cancel()
 
-	devices, err := a.client().Discover(ctx, apdu.DiscoverRequest{
-		Destination: dst,
-		WhoIs:       whoIs,
-		Window:      *window,
-	})
-	if err != nil {
-		return fmt.Errorf("discover: %s", describeError(err))
+	// Send Who-Is to each target. Failures on one interface must not abort the
+	// others (e.g. a down link or a directed broadcast the OS refuses).
+	sent := 0
+	for _, t := range targets {
+		if err := a.client().WhoIs(ctx, t.Address, whoIs); err != nil {
+			fmt.Printf("  warning: Who-Is on %s failed: %s\n", t.Address.AddrPort, describeError(err))
+			continue
+		}
+		sent++
+	}
+	if sent == 0 {
+		return fmt.Errorf("could not send Who-Is on any interface")
 	}
 
-	if len(devices) == 0 {
+	// Collect for the window.
+	select {
+	case <-ctx.Done():
+	case <-time.After(*window):
+	}
+
+	mu.Lock()
+	collected := make([]apdu.IAmIndication, len(devices))
+	copy(collected, devices)
+	mu.Unlock()
+
+	if len(collected) == 0 {
 		fmt.Println("No devices responded.")
 		return nil
 	}
 
 	// Stable output ordered by device instance.
-	sort.Slice(devices, func(i, j int) bool {
-		return devices[i].DeviceIdentifier.Instance() < devices[j].DeviceIdentifier.Instance()
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].DeviceIdentifier.Instance() < collected[j].DeviceIdentifier.Instance()
 	})
 
-	fmt.Printf("\nFound %d device(s):\n", len(devices))
+	fmt.Printf("\nFound %d device(s):\n", len(collected))
 	fmt.Printf("%-10s  %-21s  %-8s  %s\n", "DEVICE", "ADDRESS", "VENDOR", "MAX-APDU / SEGMENTATION")
-	for _, d := range devices {
+	for _, d := range collected {
 		fmt.Printf("%-10d  %-21s  %-8d  %v / %v\n",
 			d.DeviceIdentifier.Instance(),
 			d.Source.AddrPort,

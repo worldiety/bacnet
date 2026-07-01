@@ -112,51 +112,77 @@ func (a *app) pace(ctx context.Context) {
 	}
 }
 
-// broadcastAddress resolves the Who-Is destination address.
+// broadcastTarget describes one Who-Is destination together with a short label
+// (the originating interface name, or "manual" for a user-supplied address)
+// used only for progress output.
+type broadcastTarget struct {
+	Label   string
+	Address netprim.Address
+}
+
+// broadcastTargets resolves the set of Who-Is destinations.
 //
-// If --bcast was given it is used verbatim. Otherwise the directed broadcast
-// address of the interface bound by --iface is auto-detected. If neither is
-// available it falls back to the limited broadcast 255.255.255.255.
-func (a *app) broadcastAddress() (netprim.Address, error) {
+// If --bcast was given it is used verbatim as the single target. Otherwise the
+// directed broadcast address of every broadcast-capable IPv4 interface is used
+// (restricted to --iface if that was given). This lets discovery work on hosts
+// that are attached to more than one BACnet network at once. If nothing can be
+// detected it falls back to the limited broadcast 255.255.255.255.
+func (a *app) broadcastTargets() ([]broadcastTarget, error) {
 	if a.opts.bcast != "" {
 		ap, err := netip.ParseAddrPort(a.opts.bcast)
 		if err != nil {
 			// Allow a bare IP without a port.
 			ip, ipErr := netip.ParseAddr(a.opts.bcast)
 			if ipErr != nil || !ip.Is4() {
-				return netprim.Address{}, fmt.Errorf("invalid --bcast %q: %w", a.opts.bcast, err)
+				return nil, fmt.Errorf("invalid --bcast %q: %w", a.opts.bcast, err)
 			}
 			ap = netip.AddrPortFrom(ip, defaultUDPPort)
 		}
-		return netprim.NewAddressFromAddrPort(ap), nil
+		return []broadcastTarget{{
+			Label:   "manual",
+			Address: netprim.NewAddressFromAddrPort(ap),
+		}}, nil
 	}
 
-	bip, err := detectBroadcast(a.opts.iface)
-	if err != nil {
+	found, err := detectBroadcasts(a.opts.iface)
+	if err != nil || len(found) == 0 {
 		// Fall back to the limited broadcast address.
-		return netprim.NewAddressFromAddrPort(
-			netip.AddrPortFrom(netip.AddrFrom4([4]byte{255, 255, 255, 255}), defaultUDPPort),
-		), nil
+		return []broadcastTarget{{
+			Label: "limited-broadcast",
+			Address: netprim.NewAddressFromAddrPort(
+				netip.AddrPortFrom(netip.AddrFrom4([4]byte{255, 255, 255, 255}), defaultUDPPort),
+			),
+		}}, nil
 	}
-	return netprim.NewAddressFromAddrPort(netip.AddrPortFrom(bip, defaultUDPPort)), nil
+	return found, nil
 }
 
-// detectBroadcast computes the IPv4 directed-broadcast address for the given
-// local interface IP. If ifaceIP is empty, the first non-loopback IPv4
-// interface with a broadcast-capable address is used.
-func detectBroadcast(ifaceIP string) (netip.Addr, error) {
+// ifaceBroadcast pairs an interface name with its directed broadcast address.
+type ifaceBroadcast struct {
+	iface string
+	bcast netip.Addr
+}
+
+// detectBroadcasts computes the IPv4 directed-broadcast address for every
+// broadcast-capable, non-loopback interface that is up. If ifaceIP is set, only
+// the interface holding that address is considered. Duplicate broadcast
+// addresses are collapsed.
+func detectBroadcasts(ifaceIP string) ([]broadcastTarget, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return netip.Addr{}, err
+		return nil, err
 	}
 
 	var want netip.Addr
 	if ifaceIP != "" {
 		want, err = netip.ParseAddr(ifaceIP)
 		if err != nil {
-			return netip.Addr{}, err
+			return nil, err
 		}
 	}
+
+	var targets []broadcastTarget
+	seen := make(map[netip.Addr]struct{})
 
 	for _, iff := range ifaces {
 		if iff.Flags&net.FlagUp == 0 || iff.Flags&net.FlagBroadcast == 0 {
@@ -186,15 +212,25 @@ func detectBroadcast(ifaceIP string) (netip.Addr, error) {
 			if want.IsValid() && cur != want {
 				continue
 			}
-			bcast := directedBroadcast(ip4, ipnet.Mask)
-			b, ok := netip.AddrFromSlice(bcast)
+			bcastIP := directedBroadcast(ip4, ipnet.Mask)
+			b, ok := netip.AddrFromSlice(bcastIP)
 			if !ok {
 				continue
 			}
-			return b, nil
+			if _, dup := seen[b]; dup {
+				continue
+			}
+			seen[b] = struct{}{}
+			targets = append(targets, broadcastTarget{
+				Label:   iff.Name,
+				Address: netprim.NewAddressFromAddrPort(netip.AddrPortFrom(b, defaultUDPPort)),
+			})
 		}
 	}
-	return netip.Addr{}, fmt.Errorf("no broadcast-capable IPv4 interface found")
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("no broadcast-capable IPv4 interface found")
+	}
+	return targets, nil
 }
 
 // directedBroadcast returns ip | ^mask, the directed broadcast address.
