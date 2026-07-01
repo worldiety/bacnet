@@ -7,22 +7,26 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/worldiety/bacnet"
 	"github.com/worldiety/bacnet/apdu"
 	baclog "github.com/worldiety/bacnet/common/log"
 	"github.com/worldiety/bacnet/common/netprim"
+	"github.com/worldiety/bacnet/common/types"
 )
 
 // commonOptions holds the flags shared by every subcommand.
 type commonOptions struct {
-	iface   string        // local IPv4 to bind (empty => 0.0.0.0 / all interfaces)
-	bcast   string        // broadcast IPv4 for Who-Is (empty => auto-detect)
-	timeout time.Duration // per-request invoke timeout
-	retries int           // APDU retries
-	delay   time.Duration // pacing delay inserted between sequential requests
-	verbose bool          // enable debug logging from the library
+	iface         string        // local IPv4 to bind (empty => 0.0.0.0 / all interfaces)
+	bcast         string        // broadcast IPv4 for Who-Is (empty => auto-detect)
+	timeout       time.Duration // per-request invoke timeout
+	retries       int           // APDU retries
+	delay         time.Duration // pacing delay inserted between sequential requests
+	resolveWindow time.Duration // how long to wait for I-Am when resolving a device ID
+	verbose       bool          // enable debug logging from the library
 }
 
 // app bundles a live client runtime together with the resolved options and a
@@ -157,10 +161,129 @@ func (a *app) broadcastTargets() ([]broadcastTarget, error) {
 	return found, nil
 }
 
-// ifaceBroadcast pairs an interface name with its directed broadcast address.
-type ifaceBroadcast struct {
-	iface string
-	bcast netip.Addr
+// resolvedDevice is the result of resolving a device ID to a transport address.
+type resolvedDevice struct {
+	Instance uint32
+	Address  netprim.Address
+	VendorID uint16
+}
+
+// resolveWindowOrDefault returns the configured resolve window, or 2s if unset.
+func (a *app) resolveWindowOrDefault() time.Duration {
+	if a.opts.resolveWindow > 0 {
+		return a.opts.resolveWindow
+	}
+	return 2 * time.Second
+}
+
+// resolveDevice resolves a BACnet device instance to its transport address by
+// sending a Who-Is scoped to exactly that instance on every broadcast target
+// and collecting I-Am responses for the resolve window.
+//
+// Because the Who-Is is limited to a single instance, only the target device
+// replies, which keeps discovery traffic minimal on a busy network. It returns
+// an error if no device (or more than one device) with that instance answers.
+func (a *app) resolveDevice(ctx context.Context, instance uint32) (resolvedDevice, error) {
+	di, err := types.NewDeviceInstance(instance)
+	if err != nil {
+		return resolvedDevice{}, fmt.Errorf("invalid device id %d: %w", instance, err)
+	}
+	whoIs, err := apdu.NewWhoIsRequestWithLimits(di, di)
+	if err != nil {
+		return resolvedDevice{}, err
+	}
+
+	targets, err := a.broadcastTargets()
+	if err != nil {
+		return resolvedDevice{}, err
+	}
+
+	var (
+		mu    sync.Mutex
+		seen  = make(map[string]struct{})
+		found []resolvedDevice
+	)
+	err = a.client().RegisterIAmHandler(func(_ context.Context, ind apdu.IAmIndication) error {
+		// Only accept the instance we asked for (defensive; some devices ignore
+		// the Who-Is range and answer anyway).
+		if ind.DeviceIdentifier.Instance() != instance {
+			return nil
+		}
+		key := fmt.Sprintf("%d|%s", ind.Source.Network, ind.Source.AddrPort)
+		mu.Lock()
+		if _, dup := seen[key]; !dup {
+			seen[key] = struct{}{}
+			found = append(found, resolvedDevice{
+				Instance: ind.DeviceIdentifier.Instance(),
+				Address:  ind.Source,
+				VendorID: ind.VendorID,
+			})
+		}
+		mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		return resolvedDevice{}, fmt.Errorf("register i-am handler: %w", err)
+	}
+
+	window := a.resolveWindowOrDefault()
+	sendCtx, cancel := context.WithTimeout(ctx, window+2*time.Second)
+	defer cancel()
+
+	sent := 0
+	for _, t := range targets {
+		if err := a.client().WhoIs(sendCtx, t.Address, whoIs); err != nil {
+			continue
+		}
+		sent++
+	}
+	if sent == 0 {
+		return resolvedDevice{}, fmt.Errorf("could not send Who-Is on any interface")
+	}
+
+	select {
+	case <-sendCtx.Done():
+	case <-time.After(window):
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	switch len(found) {
+	case 0:
+		return resolvedDevice{}, fmt.Errorf(
+			"device %d not found (no I-Am within %s); is it online and on a reachable network? You can also pass its IP directly",
+			instance, window)
+	case 1:
+		return found[0], nil
+	default:
+		addrs := make([]string, 0, len(found))
+		for _, f := range found {
+			addrs = append(addrs, f.Address.AddrPort.String())
+		}
+		return resolvedDevice{}, fmt.Errorf(
+			"device %d answered from multiple addresses (%s); specify the exact IP instead",
+			instance, strings.Join(addrs, ", "))
+	}
+}
+
+// resolveRef turns a parsed <device> argument into a usable transport address.
+//
+// For an IP reference it returns the address directly. For a device-ID
+// reference it performs a scoped Who-Is resolution and prints a one-line notice
+// so the operator can see which physical device the ID mapped to. The second
+// return value is the device instance when known (from an ID reference), or 0
+// for an IP reference where the instance is unknown.
+func (a *app) resolveRef(ctx context.Context, ref deviceRef) (netprim.Address, uint32, error) {
+	if !ref.IsID {
+		return ref.Address, 0, nil
+	}
+	rd, err := a.resolveDevice(ctx, ref.Instance)
+	if err != nil {
+		return netprim.Address{}, 0, err
+	}
+	fmt.Printf("Resolved device %d -> %s\n", rd.Instance, rd.Address.AddrPort)
+	return rd.Address, rd.Instance, nil
 }
 
 // detectBroadcasts computes the IPv4 directed-broadcast address for every

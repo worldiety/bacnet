@@ -13,7 +13,81 @@ import (
 // defaultUDPPort is the standard BACnet/IP UDP port (0xBAC0).
 const defaultUDPPort = 47808
 
-// parseDeviceAddr parses a device address given on the command line.
+// deviceRef is a parsed <device> command-line argument. Exactly one of the two
+// forms is populated:
+//
+//   - IsID == true: the operator gave a BACnet device instance (Instance). Its
+//     transport address must be resolved via a scoped Who-Is before use.
+//   - IsID == false: the operator gave a BACnet/IP transport address (Address),
+//     usable directly.
+type deviceRef struct {
+	IsID     bool
+	Instance uint32
+	Address  netprim.Address
+}
+
+// parseDeviceRef parses a <device> argument, auto-detecting whether it is a
+// BACnet device ID or a BACnet/IP transport address.
+//
+// Accepted forms:
+//
+//	10.6.6.123          -> IP transport address, port 47808
+//	10.6.6.123:47809    -> IP transport address, explicit port
+//	5123                -> device ID (instance 5123)
+//	device:5123         -> device ID (explicit)
+//	#5123               -> device ID (explicit)
+//
+// Disambiguation: any value containing a dot is treated as an IPv4 address;
+// otherwise it is treated as a device ID.
+func parseDeviceRef(s string) (deviceRef, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return deviceRef{}, fmt.Errorf("empty device")
+	}
+
+	// Explicit device-ID forms.
+	if rest, ok := strings.CutPrefix(s, "#"); ok {
+		return parseDeviceIDRef(rest)
+	}
+	if rest, ok := cutPrefixFold(s, "device:"); ok {
+		return parseDeviceIDRef(rest)
+	}
+
+	// A dot means an IPv4 transport address; otherwise a bare device ID.
+	if strings.Contains(s, ".") {
+		addr, err := parseDeviceAddr(s)
+		if err != nil {
+			return deviceRef{}, err
+		}
+		return deviceRef{Address: addr}, nil
+	}
+
+	return parseDeviceIDRef(s)
+}
+
+// parseDeviceIDRef parses a bare device instance number into a deviceRef.
+func parseDeviceIDRef(s string) (deviceRef, error) {
+	s = strings.TrimSpace(s)
+	inst, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return deviceRef{}, fmt.Errorf("invalid device id %q: expected a number, device:N, #N, or an IP address", s)
+	}
+	di, err := types.NewDeviceInstance(uint32(inst))
+	if err != nil {
+		return deviceRef{}, fmt.Errorf("invalid device id %q: %w", s, err)
+	}
+	return deviceRef{IsID: true, Instance: uint32(di)}, nil
+}
+
+// cutPrefixFold is strings.CutPrefix with case-insensitive prefix matching.
+func cutPrefixFold(s, prefix string) (string, bool) {
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):], true
+	}
+	return "", false
+}
+
+// parseDeviceAddr parses a BACnet/IP transport address given on the command line.
 //
 // Accepted forms:
 //

@@ -413,8 +413,11 @@ func encodeWhoIsPayload(req WhoIsRequest) ([]byte, error) {
 		return nil, nil
 	}
 
-	lowBytes := encodeUnsignedApp(uint32(*req.LowLimit))
-	highBytes := encodeUnsignedApp(uint32(*req.HighLimit))
+	// Per ASHRAE 135 clause 16.10.1, the device-instance range limits are
+	// context-tagged: deviceInstanceRangeLowLimit is context tag 0 and
+	// deviceInstanceRangeHighLimit is context tag 1 (each an unsigned value).
+	lowBytes := encodeContextPrimitive(0, encodeUnsigned(uint32(*req.LowLimit)))
+	highBytes := encodeContextPrimitive(1, encodeUnsigned(uint32(*req.HighLimit)))
 
 	out := make([]byte, 0, len(lowBytes)+len(highBytes))
 	out = append(out, lowBytes...)
@@ -766,12 +769,6 @@ func looksLikeContextPrimitiveTag(b byte, tagNumber bacencoding.AppTag) bool {
 
 func encodeContextPrimitive(tagNumber uint8, value []byte) []byte {
 	return bacencoding.EncodeContextPrimitive(tagNumber, value)
-}
-
-func encodeUnsignedApp(v uint32) []byte {
-	value := encodeUnsigned(v)
-	header := byte(2<<4) | byte(len(value))
-	return append([]byte{header}, value...)
 }
 
 func encodeUnsigned(v uint32) []byte {

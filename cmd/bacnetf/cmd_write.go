@@ -30,7 +30,8 @@ func cmdWrite(args []string) error {
 	readback := fs.Bool("readback", true, "read the property back after writing")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf write <device> <object> <property> <type:value> [flags]\n\n")
-		fmt.Fprintf(fs.Output(), "Write a single property. Mutates a live device; confirmation is required.\n\n")
+		fmt.Fprintf(fs.Output(), "Write a single property. Mutates a live device; confirmation is required.\n")
+		fmt.Fprintf(fs.Output(), "<device> may be a BACnet device ID (e.g. 5123 or device:5123) or an IP.\n\n")
 		fmt.Fprintf(fs.Output(), "Value types:\n")
 		fmt.Fprintf(fs.Output(), "  null:                 relinquish a commandable property\n")
 		fmt.Fprintf(fs.Output(), "  bool:true|false       boolean\n")
@@ -43,7 +44,7 @@ func cmdWrite(args []string) error {
 		fmt.Fprintf(fs.Output(), "  octet:<hex>           octet string\n")
 		fmt.Fprintf(fs.Output(), "  oid:<type>:<inst>     object identifier\n\n")
 		fmt.Fprintf(fs.Output(), "Examples:\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf write 10.6.6.123 analog-value:1 present-value real:21.5 --priority 8\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf write 5123 analog-value:1 present-value real:21.5 --priority 8\n")
 		fmt.Fprintf(fs.Output(), "  bacnetf write 10.6.6.123 analog-value:1 present-value null: --priority 8\n\n")
 		fs.PrintDefaults()
 	}
@@ -56,7 +57,7 @@ func cmdWrite(args []string) error {
 		return fmt.Errorf("expected <device> <object> <property> <type:value>")
 	}
 
-	dst, err := parseDeviceAddr(pos[0])
+	ref, err := parseDeviceRef(pos[0])
 	if err != nil {
 		return err
 	}
@@ -87,6 +88,19 @@ func cmdWrite(args []string) error {
 		return fmt.Errorf("encode value: %w", err)
 	}
 
+	a, err := newApp(opts)
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+
+	// Resolve the target first (for a device ID this discovers its IP) so the
+	// confirmation plan shows the exact physical device that will be written.
+	dst, _, err := a.resolveRef(context.Background(), ref)
+	if err != nil {
+		return err
+	}
+
 	// Show exactly what will happen and require confirmation.
 	printWritePlan(pos[0], dst.AddrPort.String(), oid, pid, pos[3], prioPtr, indexPtr(*index))
 	if !*yes {
@@ -99,12 +113,6 @@ func cmdWrite(args []string) error {
 			return nil
 		}
 	}
-
-	a, err := newApp(opts)
-	if err != nil {
-		return err
-	}
-	defer a.Close()
 
 	req, err := apdu.NewWritePropertyRequest(oid, pid, indexPtr(*index), encoded, prioPtr)
 	if err != nil {

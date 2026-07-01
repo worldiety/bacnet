@@ -153,6 +153,21 @@ func TestClientWhoIs(t *testing.T) {
 			t.Fatalf("payload[%d] = 0x%02x, want 0x%02x", i, decoded.Payload[i], wantPayload[i])
 		}
 	}
+
+	// Pin the exact wire format: per ASHRAE 135 clause 16.10.1 the range limits
+	// are context-tagged (tag 0 = low limit, tag 1 = high limit), NOT
+	// application-tagged unsigned integers. For low=1, high=1024 this is:
+	//   context tag 0, len 1: 0x09 0x01
+	//   context tag 1, len 2: 0x1A 0x04 0x00
+	wantWire := []byte{0x09, 0x01, 0x1A, 0x04, 0x00}
+	if len(decoded.Payload) != len(wantWire) {
+		t.Fatalf("who-is range payload = % x, want % x", decoded.Payload, wantWire)
+	}
+	for i := range wantWire {
+		if decoded.Payload[i] != wantWire[i] {
+			t.Fatalf("who-is range payload = % x, want % x", decoded.Payload, wantWire)
+		}
+	}
 }
 
 func TestClientWhoHas(t *testing.T) {

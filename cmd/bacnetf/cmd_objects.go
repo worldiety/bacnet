@@ -25,15 +25,18 @@ func cmdObjects(args []string) error {
 	opts := commonOptions{}
 	registerCommonFlags(fs, &opts)
 
-	device := fs.Int("device", -1, "device instance (defaults to the object-list of device:4194303, the 'this device' proxy, if unset)")
+	device := fs.Int("device", -1, "device instance for the object-list (only needed when <device> is an IP; ignored when <device> is a device ID)")
 	withNames := fs.Bool("names", true, "also read each object's object-name")
 	limit := fs.Int("limit", 0, "stop after this many objects (0 = no limit)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf objects <device> [flags]\n\n")
-		fmt.Fprintf(fs.Output(), "List all objects on a device by reading its object-list.\n\n")
+		fmt.Fprintf(fs.Output(), "List all objects on a device by reading its object-list.\n")
+		fmt.Fprintf(fs.Output(), "<device> may be a BACnet device ID (e.g. 5123 or device:5123) or an IP.\n")
+		fmt.Fprintf(fs.Output(), "When a device ID is given, --device is unnecessary.\n\n")
 		fmt.Fprintf(fs.Output(), "Examples:\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf objects 10.6.6.123 --device 1234\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf objects 10.6.6.123 --device 1234 --names=false\n\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf objects 5123\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf objects 10.6.6.123 --device 5123\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf objects 5123 --names=false\n\n")
 		fs.PrintDefaults()
 	}
 	pos, err := parseArgs(fs, args)
@@ -45,21 +48,9 @@ func cmdObjects(args []string) error {
 		return fmt.Errorf("expected <device>")
 	}
 
-	dst, err := parseDeviceAddr(pos[0])
+	ref, err := parseDeviceRef(pos[0])
 	if err != nil {
 		return err
-	}
-
-	// The object-list lives on the Device object. If the caller did not give a
-	// device instance we use 4194303 (the reserved "unconfigured / this device"
-	// instance) which many devices accept as a self-reference.
-	deviceInstance := uint32(4194303)
-	if *device >= 0 {
-		deviceInstance = uint32(*device)
-	}
-	deviceOID, err := types.NewObjectIdentifier(types.ObjectTypeDevice, deviceInstance)
-	if err != nil {
-		return fmt.Errorf("invalid device instance: %w", err)
 	}
 
 	a, err := newApp(opts)
@@ -67,6 +58,30 @@ func cmdObjects(args []string) error {
 		return err
 	}
 	defer a.Close()
+
+	dst, resolvedInstance, err := a.resolveRef(context.Background(), ref)
+	if err != nil {
+		return err
+	}
+
+	// The object-list lives on the Device object. Determine which device
+	// instance to address:
+	//   - device ID reference: use the resolved instance directly.
+	//   - IP reference with --device: use the given instance.
+	//   - IP reference without --device: fall back to 4194303, the reserved
+	//     "unconfigured / this device" instance many devices accept as a
+	//     self-reference.
+	deviceInstance := uint32(4194303)
+	switch {
+	case ref.IsID:
+		deviceInstance = resolvedInstance
+	case *device >= 0:
+		deviceInstance = uint32(*device)
+	}
+	deviceOID, err := types.NewObjectIdentifier(types.ObjectTypeDevice, deviceInstance)
+	if err != nil {
+		return fmt.Errorf("invalid device instance: %w", err)
+	}
 
 	// Step 1: read the array length (index 0).
 	count, err := a.readObjectListCount(dst, deviceOID)

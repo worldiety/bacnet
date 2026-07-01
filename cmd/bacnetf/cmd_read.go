@@ -21,10 +21,11 @@ func cmdRead(args []string) error {
 	index := fs.Int("index", -1, "array index to read (-1 = whole property)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf read <device> <object> <property> [flags]\n\n")
-		fmt.Fprintf(fs.Output(), "Read a single property from an object.\n\n")
+		fmt.Fprintf(fs.Output(), "Read a single property from an object.\n")
+		fmt.Fprintf(fs.Output(), "<device> may be a BACnet device ID (e.g. 5123 or device:5123) or an IP.\n\n")
 		fmt.Fprintf(fs.Output(), "Examples:\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf read 10.6.6.123 analog-value:1 present-value\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf read 10.6.6.123 device:1234 object-name\n\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf read 5123 analog-value:1 present-value\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf read 10.6.6.123 device:5123 object-name\n\n")
 		fs.PrintDefaults()
 	}
 	pos, err := parseArgs(fs, args)
@@ -36,7 +37,7 @@ func cmdRead(args []string) error {
 		return fmt.Errorf("expected <device> <object> <property>")
 	}
 
-	dst, err := parseDeviceAddr(pos[0])
+	ref, err := parseDeviceRef(pos[0])
 	if err != nil {
 		return err
 	}
@@ -54,6 +55,11 @@ func cmdRead(args []string) error {
 		return err
 	}
 	defer a.Close()
+
+	dst, _, err := a.resolveRef(context.Background(), ref)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), a.requestBudget())
 	defer cancel()
@@ -115,10 +121,11 @@ func cmdProps(args []string) error {
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf props <device> <object> [property...] [flags]\n\n")
 		fmt.Fprintf(fs.Output(), "Read several properties of one object. With no properties given,\n")
-		fmt.Fprintf(fs.Output(), "a default set for the object type is read.\n\n")
+		fmt.Fprintf(fs.Output(), "a default set for the object type is read.\n")
+		fmt.Fprintf(fs.Output(), "<device> may be a BACnet device ID (e.g. 5123 or device:5123) or an IP.\n\n")
 		fmt.Fprintf(fs.Output(), "Examples:\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf props 10.6.6.123 analog-value:1\n")
-		fmt.Fprintf(fs.Output(), "  bacnetf props 10.6.6.123 device:1234 object-name model-name firmware-revision\n\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf props 5123 analog-value:1\n")
+		fmt.Fprintf(fs.Output(), "  bacnetf props 5123 device:5123 object-name model-name firmware-revision\n\n")
 		fs.PrintDefaults()
 	}
 	pos, err := parseArgs(fs, args)
@@ -130,7 +137,7 @@ func cmdProps(args []string) error {
 		return fmt.Errorf("expected <device> <object> [property...]")
 	}
 
-	dst, err := parseDeviceAddr(pos[0])
+	ref, err := parseDeviceRef(pos[0])
 	if err != nil {
 		return err
 	}
@@ -157,6 +164,11 @@ func cmdProps(args []string) error {
 		return err
 	}
 	defer a.Close()
+
+	dst, _, err := a.resolveRef(context.Background(), ref)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("%s\n", oidLabel(oid))
 

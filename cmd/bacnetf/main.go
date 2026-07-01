@@ -94,6 +94,7 @@ func registerCommonFlags(fs *flag.FlagSet, opts *commonOptions) {
 	fs.DurationVar(&opts.timeout, "timeout", 10*time.Second, "per-request timeout (raise for slow MS/TP lines)")
 	fs.IntVar(&opts.retries, "retries", 3, "APDU retransmission attempts")
 	fs.DurationVar(&opts.delay, "delay", 0, "delay inserted between sequential requests (gentle pacing for MS/TP)")
+	fs.DurationVar(&opts.resolveWindow, "resolve-window", 2*time.Second, "how long to wait for I-Am when resolving a device ID to an address")
 	fs.BoolVar(&opts.verbose, "v", false, "verbose: enable debug logging from the BACnet stack")
 }
 
@@ -112,16 +113,17 @@ Commands:
                                              write a single property (guarded)
 
 Addressing:
-  <device>    IPv4[:port]         e.g. 10.6.6.123 or 10.6.6.123:47808
-  <object>    <type>:<instance>   e.g. analog-value:1, device:1234, 2:1
+  <device>    device ID or IP     e.g. 5123, device:5123, #5123, 10.6.6.123[:47808]
+                                  (a device ID is resolved to its address via Who-Is)
+  <object>    <type>:<instance>   e.g. analog-value:1, device:5123, 2:1
   <property>  <name>|<number>     e.g. present-value, object-name, 85
 
 Examples:
   bacnetf discover
-  bacnetf objects 10.6.6.123 --device 1234
-  bacnetf props   10.6.6.123 device:1234
-  bacnetf read    10.6.6.123 analog-value:1 present-value
-  bacnetf write   10.6.6.123 analog-value:1 present-value real:21.5 --priority 8
+  bacnetf objects 5123
+  bacnetf props   5123 device:5123
+  bacnetf read    5123 analog-value:1 present-value
+  bacnetf write   5123 analog-value:1 present-value real:21.5 --priority 8
 
 Run "bacnetf <command> -h" for command-specific flags.
 `)
