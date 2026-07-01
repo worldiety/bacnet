@@ -2,3 +2,5 @@
 plan/
 .github/
 coverage.out
+Agents.md
+.cz.yaml
