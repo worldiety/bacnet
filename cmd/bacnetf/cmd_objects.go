@@ -5,24 +5,16 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/worldiety/bacnet/apdu"
-	"github.com/worldiety/bacnet/common/netprim"
-	"github.com/worldiety/bacnet/common/types"
-	bacencoding "github.com/worldiety/bacnet/encoding"
+	"github.com/worldiety/bacnet/client"
 )
-
-// propObjectList is the object-list property identifier (ASHRAE 135).
-const propObjectList types.PropertyIdentifier = 76
 
 // cmdObjects implements: bacnetf objects <device> [flags]
 //
 // It reads the Device object's object-list to enumerate every object on the
-// device. The list is read element-by-element (index 0 gives the count, then
-// each index in turn) rather than in a single large read, which is gentle on
-// slow MS/TP segments and avoids segmentation aborts.
+// device (element-by-element, gentle on slow MS/TP lines).
 func cmdObjects(args []string) error {
 	fs := flag.NewFlagSet("objects", flag.ContinueOnError)
-	opts := commonOptions{}
+	opts := cliOptions{}
 	registerCommonFlags(fs, &opts)
 
 	device := fs.Int("device", -1, "device instance for the object-list (only needed when <device> is an IP; ignored when <device> is a device ID)")
@@ -48,128 +40,43 @@ func cmdObjects(args []string) error {
 		return fmt.Errorf("expected <device>")
 	}
 
-	ref, err := parseDeviceRef(pos[0])
+	c, err := newClient(opts)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	ctx := context.Background()
+	target, err := resolveAndReport(ctx, c, pos[0])
 	if err != nil {
 		return err
 	}
 
-	a, err := newApp(opts)
+	objects, err := c.ReadObjectList(ctx, target, client.ObjectListOptions{
+		Device: *device,
+		Limit:  *limit,
+		OnError: func(index uint32, err error) error {
+			fmt.Printf("  [%d] ! %s\n", index, client.Describe(err))
+			return nil // keep going
+		},
+	})
 	if err != nil {
-		return err
-	}
-	defer a.Close()
-
-	dst, resolvedInstance, err := a.resolveRef(context.Background(), ref)
-	if err != nil {
-		return err
+		return fmt.Errorf("read object-list: %s", client.Describe(err))
 	}
 
-	// The object-list lives on the Device object. Determine which device
-	// instance to address:
-	//   - device ID reference: use the resolved instance directly.
-	//   - IP reference with --device: use the given instance.
-	//   - IP reference without --device: fall back to 4194303, the reserved
-	//     "unconfigured / this device" instance many devices accept as a
-	//     self-reference.
-	deviceInstance := uint32(4194303)
-	switch {
-	case ref.IsID:
-		deviceInstance = resolvedInstance
-	case *device >= 0:
-		deviceInstance = uint32(*device)
-	}
-	deviceOID, err := types.NewObjectIdentifier(types.ObjectTypeDevice, deviceInstance)
-	if err != nil {
-		return fmt.Errorf("invalid device instance: %w", err)
+	fmt.Printf("object-list: %d object(s)\n", len(objects))
+
+	names := map[client.Object]string{}
+	if *withNames {
+		names, _ = c.ReadObjectNames(ctx, target, objects)
 	}
 
-	// Step 1: read the array length (index 0).
-	count, err := a.readObjectListCount(dst, deviceOID)
-	if err != nil {
-		return fmt.Errorf("read object-list length of %s: %s", oidLabel(deviceOID), describeError(err))
-	}
-	fmt.Printf("%s object-list: %d object(s)\n", oidLabel(deviceOID), count)
-
-	if *limit > 0 && uint32(*limit) < count {
-		count = uint32(*limit)
-		fmt.Printf("(limited to first %d)\n", count)
-	}
-
-	// Step 2: read each element by index.
-	for i := uint32(1); i <= count; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), a.requestBudget())
-		oid, err := a.readObjectListElement(ctx, dst, deviceOID, i)
-		cancel()
-		if err != nil {
-			fmt.Printf("  [%d] ! %s\n", i, describeError(err))
-			a.pace(context.Background())
-			continue
+	for _, obj := range objects {
+		if name, ok := names[obj]; ok {
+			fmt.Printf("  %-26s %q\n", obj, name)
+		} else {
+			fmt.Printf("  %s\n", obj)
 		}
-
-		if *withNames {
-			nctx, ncancel := context.WithTimeout(context.Background(), a.requestBudget())
-			name, nerr := a.readProperty(nctx, dst, oid, types.PropertyIdentifierObjectName, nil)
-			ncancel()
-			if nerr != nil {
-				fmt.Printf("  %-26s\n", oidLabel(oid))
-			} else {
-				fmt.Printf("  %-26s %s\n", oidLabel(oid), name)
-			}
-			a.pace(context.Background())
-			continue
-		}
-
-		fmt.Printf("  %s\n", oidLabel(oid))
-		a.pace(context.Background())
 	}
-
 	return nil
-}
-
-// readObjectListCount reads element 0 of object-list, which is the number of
-// objects in the list.
-func (a *app) readObjectListCount(dst netprim.Address, deviceOID types.ObjectIdentifier) (uint32, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.requestBudget())
-	defer cancel()
-
-	zero := uint32(0)
-	req, err := apdu.NewReadPropertyRequest(deviceOID, propObjectList, &zero)
-	if err != nil {
-		return 0, err
-	}
-	ack, err := a.client().ReadProperty(ctx, dst, req)
-	if err != nil {
-		return 0, err
-	}
-	val, _, err := bacencoding.DecodeApplicationValue(ack.PropertyValue, 0)
-	if err != nil {
-		return 0, fmt.Errorf("decode object-list length: %w", err)
-	}
-	u, ok := val.(bacencoding.AppUnsignedInteger)
-	if !ok {
-		return 0, fmt.Errorf("object-list length has unexpected type %T", val)
-	}
-	return uint32(u), nil
-}
-
-// readObjectListElement reads element index (1-based) of object-list and
-// returns the object identifier stored there.
-func (a *app) readObjectListElement(ctx context.Context, dst netprim.Address, deviceOID types.ObjectIdentifier, index uint32) (types.ObjectIdentifier, error) {
-	req, err := apdu.NewReadPropertyRequest(deviceOID, propObjectList, &index)
-	if err != nil {
-		return 0, err
-	}
-	ack, err := a.client().ReadProperty(ctx, dst, req)
-	if err != nil {
-		return 0, err
-	}
-	val, _, err := bacencoding.DecodeApplicationValue(ack.PropertyValue, 0)
-	if err != nil {
-		return 0, fmt.Errorf("decode object-list element: %w", err)
-	}
-	oidVal, ok := val.(bacencoding.AppObjectIdentifier)
-	if !ok {
-		return 0, fmt.Errorf("object-list element has unexpected type %T", val)
-	}
-	return types.ObjectIdentifier(oidVal), nil
 }

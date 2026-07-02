@@ -1,12 +1,16 @@
-package main
+package client
 
-import "github.com/worldiety/bacnet/common/types"
+import (
+	"strconv"
+
+	"github.com/worldiety/bacnet/common/types"
+)
 
 // objectTypeByName maps canonical BACnet object-type names to their values.
 //
 // The library's types package only stringifies a subset of object types; this
-// table lets the CLI accept the full set of common commissioning object types
-// by name on input. Names use the canonical hyphenated ASHRAE 135 spelling.
+// table lets callers accept the full set of common commissioning object types
+// by name. Names use the canonical hyphenated ASHRAE 135 spelling.
 var objectTypeByName = map[string]types.ObjectType{
 	"analog-input":           types.ObjectTypeAnalogInput,
 	"analog-output":          types.ObjectTypeAnalogOutput,
@@ -53,21 +57,12 @@ var objectTypeByName = map[string]types.ObjectType{
 	"network-port":           56,
 }
 
-// objectTypeName returns a human name for an object type, falling back to the
-// library's own String() (which itself falls back to "object-type(N)").
-func objectTypeName(ot types.ObjectType) string {
-	if n, ok := objectTypeNameByValue[ot]; ok {
-		return n
-	}
-	return ot.String()
-}
-
 // objectTypeNameByValue is the reverse of objectTypeByName, built once at init.
 var objectTypeNameByValue = func() map[types.ObjectType]string {
 	m := make(map[types.ObjectType]string, len(objectTypeByName))
 	for name, ot := range objectTypeByName {
-		// First name wins for a given value; the map iteration order is random
-		// but every value here has a single canonical name.
+		// First name wins for a given value; each value here has a single
+		// canonical name, so map-iteration order does not matter.
 		if _, exists := m[ot]; !exists {
 			m[ot] = name
 		}
@@ -75,10 +70,25 @@ var objectTypeNameByValue = func() map[types.ObjectType]string {
 	return m
 }()
 
+// ObjectTypeName returns a human name for an object type, falling back to the
+// library's own String() (which itself falls back to "object-type(N)").
+func ObjectTypeName(ot types.ObjectType) string {
+	if n, ok := objectTypeNameByValue[ot]; ok {
+		return n
+	}
+	return ot.String()
+}
+
+// ObjectTypeByName resolves a canonical object-type name to its value.
+func ObjectTypeByName(name string) (types.ObjectType, bool) {
+	ot, ok := objectTypeByName[name]
+	return ot, ok
+}
+
 // propertyByName maps canonical BACnet property names to their identifiers.
 //
 // This covers the properties most relevant to discovery and commissioning. Any
-// property not listed can still be referenced numerically on the command line.
+// property not listed can still be referenced numerically.
 var propertyByName = map[string]types.PropertyIdentifier{
 	"acked-transitions":               types.PropertyIdentifierAckedTransitions,
 	"application-software-version":    types.PropertyIdentifierApplicationSoftwareVersion,
@@ -138,15 +148,6 @@ var propertyByName = map[string]types.PropertyIdentifier{
 	"subordinate-annotations":  212,
 }
 
-// propertyName returns a human name for a property identifier, falling back to
-// the library's String() (which yields "property-identifier(N)" for unknowns).
-func propertyName(pid types.PropertyIdentifier) string {
-	if n, ok := propertyNameByValue[pid]; ok {
-		return n
-	}
-	return pid.String()
-}
-
 // propertyNameByValue is the reverse of propertyByName, built once at init.
 var propertyNameByValue = func() map[types.PropertyIdentifier]string {
 	m := make(map[types.PropertyIdentifier]string, len(propertyByName))
@@ -157,6 +158,21 @@ var propertyNameByValue = func() map[types.PropertyIdentifier]string {
 	}
 	return m
 }()
+
+// PropertyName returns a human name for a property identifier, falling back to
+// the library's String() (which yields "property-identifier(N)" for unknowns).
+func PropertyName(pid types.PropertyIdentifier) string {
+	if n, ok := propertyNameByValue[pid]; ok {
+		return n
+	}
+	return pid.String()
+}
+
+// PropertyByName resolves a canonical property name to its identifier.
+func PropertyByName(name string) (types.PropertyIdentifier, bool) {
+	pid, ok := propertyByName[name]
+	return pid, ok
+}
 
 // engineeringUnits maps common BACnet engineering-unit enumeration values to a
 // short label, used when pretty-printing a units property. Only a practical
@@ -224,10 +240,11 @@ var engineeringUnits = map[uint32]string{
 	119: "pounds-mass-per-second",
 }
 
-// unitsName returns a label for an engineering-units enumeration value.
-func unitsName(v uint32) string {
+// UnitsName returns a label for an engineering-units enumeration value,
+// falling back to the decimal number when unknown.
+func UnitsName(v uint32) string {
 	if n, ok := engineeringUnits[v]; ok {
 		return n
 	}
-	return itoa32(v)
+	return strconv.FormatUint(uint64(v), 10)
 }

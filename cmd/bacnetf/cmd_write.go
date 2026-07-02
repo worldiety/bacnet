@@ -1,27 +1,22 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"strings"
 
-	"github.com/worldiety/bacnet/apdu"
+	"github.com/worldiety/bacnet/client"
 	"github.com/worldiety/bacnet/common/types"
-	bacencoding "github.com/worldiety/bacnet/encoding"
 )
 
 // cmdWrite implements: bacnetf write <device> <object> <property> <type:value> [flags]
 //
-// Writing mutates a live device. On a production GA network this is guarded:
-// the exact operation is printed and an interactive y/N confirmation is
-// required unless --yes is supplied. By default the property is read back after
-// writing so the operator can verify the effect.
+// Writing mutates a live device. On a production network this is guarded: the
+// exact operation is printed and an interactive y/N confirmation is required
+// unless --yes is supplied. By default the property is read back after writing.
 func cmdWrite(args []string) error {
 	fs := flag.NewFlagSet("write", flag.ContinueOnError)
-	opts := commonOptions{}
+	opts := cliOptions{}
 	registerCommonFlags(fs, &opts)
 
 	priority := fs.Int("priority", 0, "write priority 1..16 for commandable properties (0 = none)")
@@ -57,52 +52,47 @@ func cmdWrite(args []string) error {
 		return fmt.Errorf("expected <device> <object> <property> <type:value>")
 	}
 
-	ref, err := parseDeviceRef(pos[0])
+	obj, err := client.ParseObject(pos[1])
 	if err != nil {
 		return err
 	}
-	oid, err := parseObjectID(pos[1])
+	pid, err := client.ParseProperty(pos[2])
 	if err != nil {
 		return err
 	}
-	pid, err := parsePropertyID(pos[2])
-	if err != nil {
-		return err
-	}
-	appVal, err := parseWriteValue(pos[3])
+	value, err := client.ParseValue(pos[3])
 	if err != nil {
 		return err
 	}
 
-	var prioPtr *uint8
+	var writeOpts []client.WriteOption
 	if *priority != 0 {
 		if *priority < 1 || *priority > 16 {
 			return fmt.Errorf("--priority must be between 1 and 16")
 		}
-		p := uint8(*priority)
-		prioPtr = &p
+		writeOpts = append(writeOpts, client.WithPriority(uint8(*priority)))
+	}
+	if *index >= 0 {
+		writeOpts = append(writeOpts, client.WriteAtIndex(uint32(*index)))
 	}
 
-	encoded, err := bacencoding.EncodeApplicationValue(appVal)
-	if err != nil {
-		return fmt.Errorf("encode value: %w", err)
-	}
-
-	a, err := newApp(opts)
+	c, err := newClient(opts)
 	if err != nil {
 		return err
 	}
-	defer a.Close()
+	defer c.Close()
 
-	// Resolve the target first (for a device ID this discovers its IP) so the
-	// confirmation plan shows the exact physical device that will be written.
-	dst, _, err := a.resolveRef(context.Background(), ref)
+	ctx := context.Background()
+
+	// Resolve first (for a device ID this discovers its IP) so the confirmation
+	// plan shows the exact physical device that will be written. The returned
+	// target is address-based, so the write does not re-resolve.
+	target, err := resolveAndReport(ctx, c, pos[0])
 	if err != nil {
 		return err
 	}
 
-	// Show exactly what will happen and require confirmation.
-	printWritePlan(pos[0], dst.AddrPort.String(), oid, pid, pos[3], prioPtr, indexPtr(*index))
+	printWritePlan(pos[0], target.String(), obj, pid, pos[3], *priority, *index)
 	if !*yes {
 		ok, err := confirm("Proceed with this write? [y/N] ")
 		if err != nil {
@@ -114,59 +104,36 @@ func cmdWrite(args []string) error {
 		}
 	}
 
-	req, err := apdu.NewWritePropertyRequest(oid, pid, indexPtr(*index), encoded, prioPtr)
-	if err != nil {
-		return fmt.Errorf("build write request: %w", err)
+	if *readback {
+		v, err := c.WriteAndReadBack(ctx, target, obj, pid, value, writeOpts...)
+		if err != nil {
+			return fmt.Errorf("write failed: %s", client.Describe(err))
+		}
+		fmt.Println("Write acknowledged.")
+		fmt.Printf("Read-back: %s %s = %s\n", obj, client.PropertyName(pid), v.Display(pid))
+		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), a.requestBudget())
-	defer cancel()
-
-	if err := a.client().WriteProperty(ctx, dst, req); err != nil {
-		return fmt.Errorf("write failed: %s", describeError(err))
+	if err := c.WriteProperty(ctx, target, obj, pid, value, writeOpts...); err != nil {
+		return fmt.Errorf("write failed: %s", client.Describe(err))
 	}
 	fmt.Println("Write acknowledged.")
-
-	if *readback {
-		rctx, rcancel := context.WithTimeout(context.Background(), a.requestBudget())
-		defer rcancel()
-		val, err := a.readProperty(rctx, dst, oid, pid, indexPtr(*index))
-		if err != nil {
-			fmt.Printf("Read-back failed: %s\n", describeError(err))
-			return nil
-		}
-		fmt.Printf("Read-back: %s %s = %s\n", oidLabel(oid), propertyName(pid), val)
-	}
-
 	return nil
 }
 
 // printWritePlan prints a clear summary of the pending write operation.
-func printWritePlan(deviceArg, addr string, oid types.ObjectIdentifier, pid types.PropertyIdentifier, rawValue string, prio *uint8, index *uint32) {
+func printWritePlan(deviceArg, addr string, obj client.Object, pid types.PropertyIdentifier, rawValue string, prio, index int) {
 	fmt.Println("About to WRITE to a live device:")
 	fmt.Printf("  Device   : %s (%s)\n", deviceArg, addr)
-	fmt.Printf("  Object   : %s\n", oidLabel(oid))
-	fmt.Printf("  Property : %s\n", propertyName(pid))
-	if index != nil {
-		fmt.Printf("  Index    : %d\n", *index)
+	fmt.Printf("  Object   : %s\n", obj)
+	fmt.Printf("  Property : %s\n", client.PropertyName(pid))
+	if index >= 0 {
+		fmt.Printf("  Index    : %d\n", index)
 	}
 	fmt.Printf("  Value    : %s\n", rawValue)
-	if prio != nil {
-		fmt.Printf("  Priority : %d\n", *prio)
+	if prio != 0 {
+		fmt.Printf("  Priority : %d\n", prio)
 	} else {
 		fmt.Printf("  Priority : (none)\n")
 	}
-}
-
-// confirm prompts the operator and returns true only for an explicit yes.
-func confirm(prompt string) (bool, error) {
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		// Treat EOF / no tty as "no".
-		return false, nil
-	}
-	line = strings.ToLower(strings.TrimSpace(line))
-	return line == "y" || line == "yes", nil
 }

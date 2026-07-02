@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"errors"
@@ -7,9 +7,10 @@ import (
 	"github.com/worldiety/bacnet/apdu"
 )
 
-// describeError turns a BACnet client error into an operator-friendly message.
-// It recognizes the typed remote errors/rejects/aborts and the timeout sentinel.
-func describeError(err error) string {
+// Describe turns a BACnet client error into an operator-friendly message. It
+// recognizes the typed remote errors/rejects/aborts and the timeout and
+// segmentation sentinels, falling back to err.Error() for anything else.
+func Describe(err error) string {
 	if err == nil {
 		return ""
 	}
@@ -39,10 +40,11 @@ func describeError(err error) string {
 	}
 }
 
-// isPerObjectError reports whether an error is a benign "this object/property
-// does not exist" style remote error, which during enumeration should be
-// skipped rather than treated as fatal.
-func isPerObjectError(err error) bool {
+// IsRemoteError reports whether err is a remote Error-PDU from the device (as
+// opposed to a transport/timeout failure). During enumeration such errors
+// usually mean "this object or property does not exist" and can be skipped
+// rather than treated as fatal.
+func IsRemoteError(err error) bool {
 	var remoteErr apdu.RemoteErrorAPDU
 	return errors.As(err, &remoteErr)
 }
