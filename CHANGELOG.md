@@ -4,7 +4,7 @@
 
 - decode non-UTF-8 character strings: the character-string codec now handles the standard BACnet character sets (UTF-8, ISO-8859-1, UCS-2/UTF-16BE, UCS-4/UTF-32BE) and yields a proper AppCharacterString, so client.PropertyValue Text() and Display() work without a recovery path (e.g. Kieback&Peter "Außentemperatur")
 - added client.PropertyValue.Charset() to inspect the on-the-wire character set of a character string
-- added high-level ReadPropertyMultiple support to the client package: client.ReadPropertiesMultiple (one object) and client.ReadMultiple (many objects) read in a single request and fall back automatically to per-property reads when a device lacks RPM or the response would not fit one APDU
+- added high-level ReadPropertyMultiple support to the client package: client.ReadPropertiesMultiple (one object) and client.ReadMultiple (many objects) read in a single request and fall back automatically to per-property reads when a device lacks RPM, when the response would not fit one APDU, or when the device rejects the whole request because a requested property/object is not applicable (e.g. an inapplicable network-port property) — the fallback isolates the bad property so the valid ones still return values
 - added high-level WritePropertyMultiple support: client.WritePropertiesMultiple writes several properties/objects as one atomic request (no automatic fallback, to preserve write semantics)
 - client.PropertyValue now decodes and renders list-valued properties (e.g. object-list, state-text, property-list): added Values, Len(), IsList() and ObjectIDs(), and Display() renders a list as "[a, b, c]"
 - the bacnetf `props` command now uses ReadPropertyMultiple by default (with a --no-rpm opt-out)

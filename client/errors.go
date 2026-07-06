@@ -49,22 +49,32 @@ func IsRemoteError(err error) bool {
 	return errors.As(err, &remoteErr)
 }
 
-// rpmUnusable reports whether err from a ReadPropertyMultiple attempt means the
-// service cannot be used against this device, so the caller should fall back to
-// reading each property individually. It recognizes four signals:
+// rpmUnusable reports whether a whole-request failure from a
+// ReadPropertyMultiple attempt should cause the caller to fall back to reading
+// each property individually. Falling back both works around devices that do
+// not implement RPM and, importantly, isolates a single bad property so the
+// remaining (valid) properties still return values. It recognizes:
 //
 //   - a Reject with reason "unrecognized-service" (the device does not
 //     implement ReadPropertyMultiple);
 //   - an Error with code "service-request-denied" or the communication
 //     "unrecognized-service" code (some devices report unsupported this way);
+//   - an Error whose code indicates the request referenced something the object
+//     or device does not have — "unknown-property", "unknown-object",
+//     "unsupported-object-type" or "invalid-array-index". Many devices reject
+//     the entire RPM with such an Error-PDU when one requested property is not
+//     applicable (e.g. a network-port property that does not exist for the
+//     port's network type); reading per-property lets the good ones succeed and
+//     confines the error to the offending property;
 //   - an Abort due to buffer-overflow, APDU-too-long or
 //     segmentation-not-supported (the response would not fit a single APDU);
 //   - ErrSegmentationNotSupported, which this client returns when a device
 //     answers with a segmented response (the receive path does not reassemble
 //     segments).
 //
-// Timeouts, per-property errors and other failures are not treated as
-// "unusable" and are surfaced to the caller.
+// Timeouts and other failures are not treated as "unusable" and are surfaced to
+// the caller. Per-property errors carried inside a successful RPM-ACK never
+// reach here; they are already captured per property.
 func rpmUnusable(err error) bool {
 	if err == nil {
 		return false
@@ -82,7 +92,11 @@ func rpmUnusable(err error) bool {
 	if errors.As(err, &remoteErr) {
 		switch remoteErr.ErrorCode {
 		case apdu.ErrorCodeServicesServiceRequestDenied,
-			apdu.ErrorCodeCommunicationRejectUnrecognizedService:
+			apdu.ErrorCodeCommunicationRejectUnrecognizedService,
+			apdu.ErrorCodePropertyUnknownProperty,
+			apdu.ErrorCodeObjectUnknownObject,
+			apdu.ErrorCodeObjectUnsupportedObjectType,
+			apdu.ErrorCodePropertyInvalidArrayIndex:
 			return true
 		}
 		return false

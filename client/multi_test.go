@@ -184,6 +184,12 @@ func TestReadPropertiesMultipleFallback(t *testing.T) {
 	unusable := []error{
 		apdu.RemoteRejectAPDU{RejectReason: apdu.RejectReasonUnrecognizedService},
 		apdu.RemoteErrorAPDU{ErrorClass: apdu.ErrorClassServices, ErrorCode: apdu.ErrorCodeServicesServiceRequestDenied},
+		// A whole-request Error-PDU for a property/object the object does not
+		// have (e.g. a network-port property inapplicable to the port).
+		apdu.RemoteErrorAPDU{ErrorClass: apdu.ErrorClassProperty, ErrorCode: apdu.ErrorCodePropertyUnknownProperty},
+		apdu.RemoteErrorAPDU{ErrorClass: apdu.ErrorClassObject, ErrorCode: apdu.ErrorCodeObjectUnknownObject},
+		apdu.RemoteErrorAPDU{ErrorClass: apdu.ErrorClassObject, ErrorCode: apdu.ErrorCodeObjectUnsupportedObjectType},
+		apdu.RemoteErrorAPDU{ErrorClass: apdu.ErrorClassProperty, ErrorCode: apdu.ErrorCodePropertyInvalidArrayIndex},
 		apdu.RemoteAbortAPDU{AbortReason: apdu.AbortReasonSegmentationNotSupported},
 		apdu.RemoteAbortAPDU{AbortReason: apdu.AbortReasonBufferOverflow},
 		apdu.RemoteAbortAPDU{AbortReason: apdu.AbortReasonAPDUTooLong},
@@ -211,6 +217,80 @@ func TestReadPropertiesMultipleFallback(t *testing.T) {
 		if fv, ok := results[0].Value.Float64(); !ok || fv != 21.5 {
 			t.Fatalf("[%v] fallback value = %v, %v", ue, fv, ok)
 		}
+	}
+}
+
+// fakeFallbackAPDU serves distinct per-property values so a fallback read can
+// return different results for different properties.
+type fakeFallbackAPDU struct {
+	apdu.Client
+	values map[types.PropertyIdentifier][]byte
+	errs   map[types.PropertyIdentifier]error
+}
+
+func (f *fakeFallbackAPDU) ReadPropertyMultiple(_ context.Context, _ netprim.Address, _ apdu.ReadPropertyMultipleRequest) (apdu.ReadPropertyMultipleACK, error) {
+	// Simulate a device that rejects the whole RPM because one requested
+	// property is unknown to the object (the reported real-world failure).
+	return apdu.ReadPropertyMultipleACK{}, apdu.RemoteErrorAPDU{
+		ServiceChoice: apdu.ServiceChoiceReadPropertyMultiple,
+		ErrorClass:    apdu.ErrorClassProperty,
+		ErrorCode:     apdu.ErrorCodePropertyUnknownProperty,
+	}
+}
+
+func (f *fakeFallbackAPDU) ReadProperty(_ context.Context, _ netprim.Address, req apdu.ReadPropertyRequest) (apdu.ReadPropertyACK, error) {
+	if err, ok := f.errs[req.PropertyIdentifier]; ok {
+		return apdu.ReadPropertyACK{}, err
+	}
+	return apdu.ReadPropertyACK{PropertyValue: f.values[req.PropertyIdentifier]}, nil
+}
+
+// TestReadPropertiesMultipleWholeRequestUnknownProperty reproduces the reported
+// failure: a device rejects the entire RPM with property/unknown-property. The
+// fallback must read each property individually so the valid ones return values
+// and only the unknown one carries a per-property error.
+func TestReadPropertiesMultipleWholeRequestUnknownProperty(t *testing.T) {
+	// network-port (object type 56) is not a named constant but is a valid type;
+	// use the raw value to mirror the reported real-world object.
+	obj := Object{Type: types.ObjectType(56), Instance: 1}
+	good := types.PropertyIdentifierObjectName
+	bad := types.PropertyIdentifierPresentValue // not applicable to network-port
+
+	f := &fakeFallbackAPDU{
+		values: map[types.PropertyIdentifier][]byte{
+			good: appBytes(t, encoding.AppCharacterString("Port 1")),
+		},
+		errs: map[types.PropertyIdentifier]error{
+			bad: apdu.RemoteErrorAPDU{
+				ServiceChoice: apdu.ServiceChoiceReadProperty,
+				ErrorClass:    apdu.ErrorClassProperty,
+				ErrorCode:     apdu.ErrorCodePropertyUnknownProperty,
+			},
+		},
+	}
+	c := fakeClient(f)
+
+	results, err := c.ReadPropertiesMultiple(context.Background(), TargetAddr(netip4(t)), obj,
+		[]types.PropertyIdentifier{good, bad})
+	if err != nil {
+		t.Fatalf("ReadPropertiesMultiple should fall back, not fail: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results len = %d, want 2", len(results))
+	}
+	// Good property returns its value.
+	if results[0].Property != good || results[0].Err != nil {
+		t.Fatalf("results[0] = %#v, want %s with no error", results[0], PropertyName(good))
+	}
+	if s, ok := results[0].Value.Text(); !ok || s != "Port 1" {
+		t.Fatalf("results[0] text = %q, %v", s, ok)
+	}
+	// Bad property is isolated to a per-property remote error.
+	if results[1].Property != bad || results[1].Err == nil {
+		t.Fatalf("results[1] = %#v, want %s with an error", results[1], PropertyName(bad))
+	}
+	if !IsRemoteError(results[1].Err) {
+		t.Fatalf("results[1].Err should be a remote error, got %v", results[1].Err)
 	}
 }
 

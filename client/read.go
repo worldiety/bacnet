@@ -251,11 +251,13 @@ type ObjectResult struct {
 // property. Results are returned in the same order as pids, with per-property
 // errors captured in each PropertyResult rather than aborting.
 //
-// If the device does not support RPM, or the response would not fit a single
-// APDU (this client does not reassemble segmented responses), the call
-// transparently falls back to reading each property individually, so the result
-// is the same shape either way. Any other failure (e.g. a timeout) is returned
-// as the error.
+// If the device does not support RPM, the response would not fit a single APDU
+// (this client does not reassemble segmented responses), or the device rejects
+// the whole request because a requested property or object is not applicable,
+// the call transparently falls back to reading each property individually. The
+// result shape is the same either way, and the fallback confines any such error
+// to the offending property so the rest still return values. Any other failure
+// (e.g. a timeout) is returned as the error.
 func (c *Client) ReadPropertiesMultiple(ctx context.Context, target Target, obj Object, pids []types.PropertyIdentifier) ([]PropertyResult, error) {
 	dst, _, err := c.resolveTarget(ctx, target)
 	if err != nil {
@@ -284,9 +286,10 @@ func (c *Client) ReadPropertiesMultiple(ctx context.Context, target Target, obj 
 // same order as specs, each carrying its properties in the requested order.
 // Per-property errors are captured in each PropertyResult.
 //
-// As with ReadPropertiesMultiple, if the device does not support RPM or the
-// response would not fit a single APDU, the call falls back to reading each
-// property individually.
+// As with ReadPropertiesMultiple, if the device does not support RPM, the
+// response would not fit a single APDU, or it rejects the whole request over an
+// inapplicable property or object, the call falls back to reading each property
+// individually.
 func (c *Client) ReadMultiple(ctx context.Context, target Target, specs []ReadSpec) ([]ObjectResult, error) {
 	dst, _, err := c.resolveTarget(ctx, target)
 	if err != nil {
