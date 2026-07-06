@@ -696,7 +696,7 @@ func encodeIHavePayloadForTest(deviceIdentifier types.ObjectIdentifier, objectId
 	rawObj := uint32(objectIdentifier)
 	out = append(out, encodeApplicationPrimitiveForTest(12, []byte{byte(rawObj >> 24), byte(rawObj >> 16), byte(rawObj >> 8), byte(rawObj)})...)
 
-	charValue, _ := bacencoding.EncodeCharacterStringASCIIValue(objectName)
+	charValue, _ := bacencoding.EncodeCharacterStringValue(objectName)
 	out = append(out, encodeApplicationPrimitiveForTest(7, charValue)...)
 
 	return out

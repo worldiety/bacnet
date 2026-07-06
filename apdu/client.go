@@ -400,7 +400,7 @@ func encodeWhoHasPayload(req WhoHasRequest) ([]byte, error) {
 	}
 
 	// Character-string value for ANSI X3.4/UTF-8 basic ASCII subset: first byte charset=0.
-	charValue, err := bacencoding.EncodeCharacterStringASCIIValue(*req.ObjectName)
+	charValue, err := bacencoding.EncodeCharacterStringValue(*req.ObjectName)
 	if err != nil {
 		return nil, fmt.Errorf("%w: object name character-string: %v", ErrEncodeFailure, err)
 	}
@@ -556,7 +556,7 @@ func decodeIHavePayload(payload []byte) (IHaveIndication, error) {
 	if err != nil {
 		return IHaveIndication{}, err
 	}
-	name, err := bacencoding.DecodeCharacterStringASCIIValue(nameBytes)
+	name, err := bacencoding.DecodeCharacterStringValue(nameBytes)
 	if err != nil {
 		return IHaveIndication{}, fmt.Errorf("%w: invalid i-have object-name: %v", ErrDecodeFailure, err)
 	}

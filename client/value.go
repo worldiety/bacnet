@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/worldiety/bacnet/common/types"
 	"github.com/worldiety/bacnet/encoding"
@@ -15,9 +14,11 @@ import (
 // value. It exposes typed accessors so callers rarely need to type-switch on
 // the underlying encoding.ApplicationValue themselves.
 //
-// If the device returned a value the library could not decode (e.g. a
-// non-conformant character set), Raw is nil and RawBytes holds the original
-// application-tagged bytes so nothing is lost.
+// If the device returned a value the library could not decode, Raw is nil and
+// RawBytes holds the original application-tagged bytes so nothing is lost.
+// Character strings in any standard character set (UTF-8, ISO-8859-1,
+// UCS-2/UTF-16BE, UCS-4/UTF-32BE) decode successfully, so Text() and Display()
+// work without a recovery path; use Charset to inspect the original encoding.
 type PropertyValue struct {
 	// Raw is the decoded value, or nil if decoding failed.
 	Raw encoding.ApplicationValue
@@ -75,15 +76,14 @@ func (v PropertyValue) Bool() (bool, bool) {
 }
 
 // Text returns the value as a string when it is a Character String.
+//
+// The library decodes the standard BACnet character sets (UTF-8, ISO-8859-1,
+// UCS-2/UTF-16BE and UCS-4/UTF-32BE), so Raw is a proper AppCharacterString for
+// conformant and common non-conformant devices alike and this accessor works
+// without any caller-side recovery.
 func (v PropertyValue) Text() (string, bool) {
 	if t, ok := v.Raw.(encoding.AppCharacterString); ok {
 		return string(t), true
-	}
-	// Best-effort recovery for non-conformant charsets.
-	if v.Raw == nil && len(v.RawBytes) > 0 {
-		if s, ok := recoverCharacterString(v.RawBytes); ok {
-			return s, true
-		}
 	}
 	return "", false
 }
@@ -96,14 +96,31 @@ func (v PropertyValue) ObjectID() (types.ObjectIdentifier, bool) {
 	return 0, false
 }
 
+// Charset returns the BACnet character set of a Character String value as it
+// appeared on the wire (the leading octet of the value, per clause 20.2.9),
+// together with true. It reports false for values that are not character
+// strings or whose raw bytes are unavailable. Text() and Display() already
+// decode every standard set to UTF-8; Charset is for callers that need to know
+// or record the original encoding.
+func (v PropertyValue) Charset() (encoding.CharacterSet, bool) {
+	if len(v.RawBytes) == 0 {
+		return 0, false
+	}
+	tag, hLen, vLen, err := encoding.ParseTag(v.RawBytes)
+	if err != nil || tag.ContextSpecific || tag.TagNumber != encoding.AppTagCharacterString {
+		return 0, false
+	}
+	if vLen < 1 || hLen+vLen > len(v.RawBytes) {
+		return 0, false
+	}
+	return encoding.CharacterSet(v.RawBytes[hLen]), true
+}
+
 // Display renders the value as a human-readable string. pid provides context
 // so that, for example, a units enumeration or an object-type is rendered with
 // its name. Pass a zero PropertyIdentifier when no context is available.
 func (v PropertyValue) Display(pid types.PropertyIdentifier) string {
 	if v.Raw == nil {
-		if s, ok := recoverCharacterString(v.RawBytes); ok {
-			return s
-		}
 		if len(v.RawBytes) == 0 {
 			return "(empty)"
 		}
@@ -180,50 +197,6 @@ func formatBits(bits []bool) string {
 	}
 	b.WriteByte('}')
 	return b.String()
-}
-
-// recoverCharacterString attempts to decode a single application-tagged
-// character string (tag 7) from raw as a last resort. The library already
-// decodes valid UTF-8 in character set 0; this handles non-conformant devices
-// that place Latin-1 (or otherwise non-UTF-8) bytes in charset 0. It returns
-// the string and true on success.
-func recoverCharacterString(raw []byte) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	tag, hLen, vLen, err := encoding.ParseTag(raw)
-	if err != nil {
-		return "", false
-	}
-	if tag.ContextSpecific || tag.TagNumber != encoding.AppTagCharacterString {
-		return "", false
-	}
-	if hLen+vLen > len(raw) || vLen < 1 {
-		return "", false
-	}
-	v := raw[hLen : hLen+vLen]
-	charset := v[0]
-	body := v[1:]
-
-	switch charset {
-	case 0: // UTF-8 per spec; some devices emit Latin-1 here.
-		if utf8.Valid(body) {
-			return string(body), true
-		}
-		// Fall back to Latin-1 interpretation for stray high bytes.
-		return latin1(body), true
-	default:
-		return "", false
-	}
-}
-
-// latin1 decodes bytes as ISO-8859-1 into a UTF-8 Go string.
-func latin1(b []byte) string {
-	r := make([]rune, len(b))
-	for i, c := range b {
-		r[i] = rune(c)
-	}
-	return string(r)
 }
 
 // ParseValue parses a "<type>:<value>" string into an application value ready

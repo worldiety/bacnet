@@ -76,7 +76,9 @@ type AppOctetString []byte
 func (AppOctetString) applicationValue() {}
 
 // AppCharacterString represents a BACnet Character String value (application tag 7).
-// Only ASCII (character set 0) is supported by the current codec.
+// Decoding accepts the standard character sets (UTF-8, ISO-8859-1, UCS-2/UTF-16BE
+// and UCS-4/UTF-32BE) and yields a UTF-8 Go string; encoding always emits
+// character set 0 (UTF-8).
 type AppCharacterString string
 
 func (AppCharacterString) applicationValue() {}
@@ -197,7 +199,7 @@ func DecodeApplicationValue(raw []byte, offset int) (ApplicationValue, int, erro
 		return AppOctetString(DecodeOctetStringValue(vBytes)), valueEnd, nil
 
 	case AppTagCharacterString:
-		v, err := DecodeCharacterStringASCIIValue(vBytes)
+		v, err := DecodeCharacterStringValue(vBytes)
 		if err != nil {
 			return nil, offset, fmt.Errorf("%w: character string: %v", ErrDecodeFailure, err)
 		}
@@ -271,7 +273,7 @@ func EncodeApplicationValue(v ApplicationValue) ([]byte, error) {
 		return EncodeApplicationPrimitive(uint8(AppTagOctetString), EncodeOctetStringValue([]byte(val))), nil
 
 	case AppCharacterString:
-		vBytes, err := EncodeCharacterStringASCIIValue(string(val))
+		vBytes, err := EncodeCharacterStringValue(string(val))
 		if err != nil {
 			return nil, fmt.Errorf("%w: character string: %v", ErrEncodeFailure, err)
 		}

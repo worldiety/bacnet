@@ -89,7 +89,7 @@ func encodeDeviceCommunicationControlRequestPayload(req DeviceCommunicationContr
 	}
 	out = append(out, bacencoding.EncodeContextPrimitive(1, bacencoding.EncodeUnsigned(uint32(req.EnableDisable)))...)
 	if req.Password != nil {
-		charValue, err := bacencoding.EncodeCharacterStringASCIIValue(*req.Password)
+		charValue, err := bacencoding.EncodeCharacterStringValue(*req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid password character-string: %v", ErrEncodeFailure, err)
 		}
@@ -170,7 +170,7 @@ func encodeReinitializeDeviceRequestPayload(req ReinitializeDeviceRequest) ([]by
 	out := make([]byte, 0, 16)
 	out = append(out, bacencoding.EncodeContextPrimitive(0, bacencoding.EncodeUnsigned(uint32(req.State)))...)
 	if req.Password != nil {
-		charValue, err := bacencoding.EncodeCharacterStringASCIIValue(*req.Password)
+		charValue, err := bacencoding.EncodeCharacterStringValue(*req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid password character-string: %v", ErrEncodeFailure, err)
 		}

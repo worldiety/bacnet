@@ -3,6 +3,9 @@ package encoding
 import (
 	"fmt"
 	"math"
+	"strings"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/worldiety/bacnet/common/types"
@@ -104,42 +107,134 @@ func DecodeObjectIdentifierValue(raw []byte) (types.ObjectIdentifier, error) {
 	return obj, nil
 }
 
-// EncodeCharacterStringASCIIValue encodes a UTF-8 character-string value
-// (character set 0 + bytes).
-//
-// BACnet character set 0 is UTF-8 (ANSI/ASHRAE 135-2008 and later; earlier
-// revisions specified ANSI X3.4 / ASCII, of which UTF-8 is a superset). Go
-// strings are UTF-8, so any valid Go string is encoded as-is. Strings that are
-// not valid UTF-8 are rejected.
-func EncodeCharacterStringASCIIValue(v string) ([]byte, error) {
+// CharacterSet identifies the encoding of a BACnet character string. It is the
+// first octet of a character-string value (clause 20.2.9, Table 20-2).
+type CharacterSet uint8
+
+const (
+	// CharacterSetUTF8 (character set 0) is UTF-8. ANSI/ASHRAE 135-2008 and later
+	// define set 0 as UTF-8; earlier revisions specified ANSI X3.4 / ASCII, of
+	// which UTF-8 is a superset. This is the set produced by EncodeCharacterStringValue.
+	CharacterSetUTF8 CharacterSet = 0
+	// CharacterSetDBCS (character set 1) is IBM/Microsoft DBCS. Rare; decoded
+	// best-effort as ISO-8859-1 (Latin-1).
+	CharacterSetDBCS CharacterSet = 1
+	// CharacterSetJISX0208 (character set 2) is JIS X 0208. Rare; decoded
+	// best-effort as ISO-8859-1 (Latin-1).
+	CharacterSetJISX0208 CharacterSet = 2
+	// CharacterSetUCS4 (character set 5) is UCS-4 / UTF-32 big-endian.
+	CharacterSetUCS4 CharacterSet = 5
+	// CharacterSetUCS2 (character set 4) is UCS-2 / UTF-16 big-endian. Commonly
+	// emitted by Kieback&Peter and other European controllers for names such as
+	// "Außentemperatur".
+	CharacterSetUCS2 CharacterSet = 4
+	// CharacterSetISO8859_1 (character set 3) is ISO-8859-1 (Latin-1).
+	CharacterSetISO8859_1 CharacterSet = 3
+)
+
+// EncodeCharacterStringValue encodes a Go string as a BACnet character-string
+// value (character set 0 / UTF-8 + bytes). Go strings are UTF-8, so any valid
+// Go string is encoded as-is; strings that are not valid UTF-8 are rejected.
+func EncodeCharacterStringValue(v string) ([]byte, error) {
 	if !utf8.ValidString(v) {
 		return nil, fmt.Errorf("%w: character-string is not valid UTF-8", ErrEncodeFailure)
 	}
 	out := make([]byte, 0, len(v)+1)
-	out = append(out, 0x00)
+	out = append(out, byte(CharacterSetUTF8))
 	out = append(out, []byte(v)...)
 	return out, nil
 }
 
-// DecodeCharacterStringASCIIValue decodes a UTF-8 character-string value
-// (character set 0 + bytes).
+// DecodeCharacterStringValue decodes a BACnet character-string value
+// (a leading character-set octet followed by the encoded string) into a UTF-8
+// Go string. It handles the character sets seen in the field:
 //
-// Only character set 0 (UTF-8) is supported. ASCII decodes unchanged since it
-// is a subset of UTF-8; non-ASCII UTF-8 (e.g. accented characters commonly
-// emitted by field devices) is decoded correctly. Byte sequences that are not
-// valid UTF-8 are rejected.
-func DecodeCharacterStringASCIIValue(raw []byte) (string, error) {
+//   - set 0 (UTF-8): decoded directly; ASCII is a subset. Invalid UTF-8 bytes
+//     are reinterpreted as ISO-8859-1 (Latin-1) rather than rejected, since some
+//     devices place Latin-1 bytes in set 0.
+//   - set 3 (ISO-8859-1): decoded as Latin-1.
+//   - set 4 (UCS-2 / UTF-16 big-endian): decoded from UTF-16BE.
+//   - set 5 (UCS-4 / UTF-32 big-endian): decoded from UTF-32BE.
+//   - sets 1 (DBCS) and 2 (JIS X 0208): rare; decoded best-effort as Latin-1.
+//
+// Decoding never fails for a non-empty value: unknown or malformed multi-byte
+// data falls back to a Latin-1 interpretation of the string bytes so the caller
+// always receives readable text. Only a zero-length value (missing the required
+// character-set octet) is reported as an error.
+func DecodeCharacterStringValue(raw []byte) (string, error) {
 	if len(raw) == 0 {
 		return "", fmt.Errorf("%w: empty character-string", ErrDecodeFailure)
 	}
-	if raw[0] != 0x00 {
-		return "", fmt.Errorf("%w: unsupported character set %d", ErrDecodeFailure, raw[0])
+	charset := CharacterSet(raw[0])
+	body := raw[1:]
+
+	switch charset {
+	case CharacterSetUTF8:
+		if utf8.Valid(body) {
+			return string(body), nil
+		}
+		// Some devices label Latin-1 bytes as set 0. Recover rather than reject.
+		return decodeLatin1(body), nil
+	case CharacterSetUCS2:
+		return decodeUTF16BE(body), nil
+	case CharacterSetUCS4:
+		return decodeUTF32BE(body), nil
+	case CharacterSetISO8859_1:
+		return decodeLatin1(body), nil
+	default:
+		// Sets 1 (DBCS) and 2 (JIS) and any unknown set: best-effort Latin-1 so
+		// the string is still readable. Prefer the raw bytes as UTF-8 if valid.
+		if utf8.Valid(body) {
+			return string(body), nil
+		}
+		return decodeLatin1(body), nil
 	}
-	v := string(raw[1:])
-	if !utf8.ValidString(v) {
-		return "", fmt.Errorf("%w: character-string is not valid UTF-8", ErrDecodeFailure)
+}
+
+// decodeLatin1 decodes bytes as ISO-8859-1 into a UTF-8 Go string. Every byte
+// maps 1:1 to the Unicode code point of the same value.
+func decodeLatin1(b []byte) string {
+	r := make([]rune, len(b))
+	for i, c := range b {
+		r[i] = rune(c)
 	}
-	return v, nil
+	return string(r)
+}
+
+// decodeUTF16BE decodes big-endian UTF-16 (UCS-2, BACnet character set 4) into a
+// UTF-8 Go string, honouring surrogate pairs. A trailing odd byte (malformed
+// input) is decoded as a lone Latin-1 character so no data is dropped.
+func decodeUTF16BE(b []byte) string {
+	n := len(b) / 2
+	units := make([]uint16, n)
+	for i := 0; i < n; i++ {
+		units[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
+	}
+	s := string(utf16.Decode(units))
+	if len(b)%2 != 0 {
+		s += string(rune(b[len(b)-1]))
+	}
+	return s
+}
+
+// decodeUTF32BE decodes big-endian UTF-32 (UCS-4, BACnet character set 5) into a
+// UTF-8 Go string. Trailing bytes that do not form a full 4-byte code unit
+// (malformed input) are decoded as lone Latin-1 characters so no data is dropped.
+func decodeUTF32BE(b []byte) string {
+	var sb strings.Builder
+	i := 0
+	for ; i+4 <= len(b); i += 4 {
+		cp := uint32(b[i])<<24 | uint32(b[i+1])<<16 | uint32(b[i+2])<<8 | uint32(b[i+3])
+		r := rune(cp)
+		if cp > unicode.MaxRune || (cp >= 0xD800 && cp <= 0xDFFF) {
+			r = unicode.ReplacementChar
+		}
+		sb.WriteRune(r)
+	}
+	for ; i < len(b); i++ {
+		sb.WriteRune(rune(b[i]))
+	}
+	return sb.String()
 }
 
 // IsASCIIString reports whether v only contains 7-bit ASCII bytes.

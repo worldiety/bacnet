@@ -1,3 +1,18 @@
+## Unreleased
+
+### Feat
+
+- decode non-UTF-8 character strings: the character-string codec now handles the standard BACnet character sets (UTF-8, ISO-8859-1, UCS-2/UTF-16BE, UCS-4/UTF-32BE) and yields a proper AppCharacterString, so client.PropertyValue Text() and Display() work without a recovery path (e.g. Kieback&Peter "Außentemperatur")
+- added client.PropertyValue.Charset() to inspect the on-the-wire character set of a character string
+
+### Fix
+
+- character-string decoding no longer fails on non-conformant devices: unknown or malformed encodings fall back to a readable ISO-8859-1 interpretation instead of returning an error
+
+### Refactor
+
+- replaced encoding.EncodeCharacterStringASCIIValue / DecodeCharacterStringASCIIValue with charset-aware encoding.EncodeCharacterStringValue / DecodeCharacterStringValue (breaking: the *ASCIIValue functions were removed)
+
 ## 0.3.0 (2026-07-01)
 
 ### Feat

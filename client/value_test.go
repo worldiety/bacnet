@@ -91,15 +91,53 @@ func TestDisplayWithContext(t *testing.T) {
 	}
 }
 
-func TestRecoverCharacterStringLatin1(t *testing.T) {
+func TestCharacterStringLatin1InCharset0(t *testing.T) {
 	// tag 7 (char string), value length 3 (LVT nibble): charset 0x00 + 0xFC
 	// ('ü' in Latin-1, invalid UTF-8) + 'x'. Layout matches the library's own
 	// encoding of a 2-char charset-0 string ("73 00 <b0> <b1>").
 	raw := []byte{0x73, 0x00, 0xFC, 0x78}
 	pv := decodeValue(raw)
-	// The library rejects invalid UTF-8; our recovery interprets it as Latin-1.
-	if got := pv.Display(0); got != "üx" {
-		t.Fatalf("recovered display = %q, want üx", got)
+	// The library now recovers Latin-1-in-charset-0 into a proper decoded value.
+	if !pv.Decoded() {
+		t.Fatalf("value should now decode; raw=%x", pv.RawBytes)
+	}
+	if s, ok := pv.Text(); !ok || s != "üx" {
+		t.Fatalf("Text = %q, %v; want üx, true", s, ok)
+	}
+	// Display quotes character strings.
+	if got := pv.Display(0); got != `"üx"` {
+		t.Fatalf("Display = %q, want %q", got, `"üx"`)
+	}
+	if cs, ok := pv.Charset(); !ok || cs != encoding.CharacterSetUTF8 {
+		t.Fatalf("Charset = %d, %v; want 0, true", cs, ok)
+	}
+}
+
+func TestCharacterStringUCS2(t *testing.T) {
+	// Kieback&Peter and other European controllers emit UCS-2 (UTF-16BE,
+	// character set 4) for names such as "Außentemperatur".
+	body := []byte{0x04} // charset 4
+	for _, r := range "Außentemperatur" {
+		body = append(body, byte(uint16(r)>>8), byte(uint16(r)))
+	}
+	raw := encoding.EncodeApplicationPrimitive(uint8(encoding.AppTagCharacterString), body)
+	pv := decodeValue(raw)
+	if !pv.Decoded() {
+		t.Fatalf("UCS-2 value should decode; raw=%x", pv.RawBytes)
+	}
+	if s, ok := pv.Text(); !ok || s != "Außentemperatur" {
+		t.Fatalf("Text = %q, %v; want Außentemperatur, true", s, ok)
+	}
+	if cs, ok := pv.Charset(); !ok || cs != encoding.CharacterSetUCS2 {
+		t.Fatalf("Charset = %d, %v; want 4 (UCS-2), true", cs, ok)
+	}
+}
+
+func TestCharsetNonCharacterString(t *testing.T) {
+	// Charset must report false for non-character-string values.
+	pv := decodeValue(mustEncode(t, ValueReal(21.5)))
+	if _, ok := pv.Charset(); ok {
+		t.Fatal("Charset should be false for a Real value")
 	}
 }
 
