@@ -105,6 +105,11 @@ type Client struct {
 	cfg    Config
 	rt     *bacnet.ClientRuntime
 	cancel context.CancelFunc
+
+	// apduClientOverride, when non-nil, supplies the APDU client instead of the
+	// runtime's. It exists so tests can inject a fake transport without a live
+	// socket; production code leaves it nil.
+	apduClientOverride apdu.Client
 }
 
 // New creates and starts a BACnet client runtime from cfg. The caller must call
@@ -164,7 +169,12 @@ func (c *Client) Close() error {
 }
 
 // apduClient returns the underlying typed APDU client for advanced use.
-func (c *Client) apduClient() apdu.Client { return c.rt.Client() }
+func (c *Client) apduClient() apdu.Client {
+	if c.apduClientOverride != nil {
+		return c.apduClientOverride
+	}
+	return c.rt.Client()
+}
 
 // requestBudget returns a context timeout for a single request, derived from
 // the invoke timeout and retry count so the context does not fire before the

@@ -91,16 +91,19 @@ func cmdRead(args []string) error {
 // cmdProps implements: bacnetf props <device> <object> [property...] [flags]
 //
 // With no explicit properties it reads a curated default set for the object
-// type. Each property is read individually so a single unsupported property
-// does not abort the listing.
+// type. By default it uses a single ReadPropertyMultiple request and falls back
+// automatically to per-property reads for devices that do not support it; pass
+// --no-rpm to always read each property individually.
 func cmdProps(args []string) error {
 	fs := flag.NewFlagSet("props", flag.ContinueOnError)
 	opts := cliOptions{}
 	registerCommonFlags(fs, &opts)
+	noRPM := fs.Bool("no-rpm", false, "read each property individually instead of ReadPropertyMultiple")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf props <device> <object> [property...] [flags]\n\n")
 		fmt.Fprintf(fs.Output(), "Read several properties of one object. With no properties given,\n")
-		fmt.Fprintf(fs.Output(), "a default set for the object type is read.\n")
+		fmt.Fprintf(fs.Output(), "a default set for the object type is read. Uses ReadPropertyMultiple\n")
+		fmt.Fprintf(fs.Output(), "by default, falling back to per-property reads when unsupported.\n")
 		fmt.Fprintf(fs.Output(), "<device> may be a BACnet device ID (e.g. 5123 or device:5123) or an IP.\n\n")
 		fmt.Fprintf(fs.Output(), "Examples:\n")
 		fmt.Fprintf(fs.Output(), "  bacnetf props 5123 analog-value:1\n")
@@ -146,7 +149,14 @@ func cmdProps(args []string) error {
 		return err
 	}
 
-	results, err := c.ReadProperties(ctx, target, obj, pids)
+	var (
+		results []client.PropertyResult
+	)
+	if *noRPM {
+		results, err = c.ReadProperties(ctx, target, obj, pids)
+	} else {
+		results, err = c.ReadPropertiesMultiple(ctx, target, obj, pids)
+	}
 	if err != nil {
 		return fmt.Errorf("read %s: %s", obj, client.Describe(err))
 	}

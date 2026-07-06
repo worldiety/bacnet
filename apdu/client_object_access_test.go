@@ -103,6 +103,43 @@ func TestClientReadPropertyMultiple(t *testing.T) {
 	}
 }
 
+func TestReadPropertyResultDecodeError(t *testing.T) {
+	// A BACnet-Error body: two application-tag-9 enumerateds (class, code).
+	// class=property(2), code=unknown-property(32). Application tag 9, length 1:
+	// 0x91 <value>.
+	errBody := []byte{
+		0x91, byte(ErrorClassProperty), // error-class = property (2)
+		0x91, byte(ErrorCodePropertyUnknownProperty), // error-code = unknown-property (32)
+	}
+
+	r := ReadPropertyResult{
+		PropertyIdentifier: types.PropertyIdentifierPresentValue,
+		Error:              errBody,
+	}
+	class, code, err := r.DecodeError()
+	if err != nil {
+		t.Fatalf("DecodeError: %v", err)
+	}
+	if class != ErrorClassProperty {
+		t.Errorf("class = %v, want %v", class, ErrorClassProperty)
+	}
+	if code != ErrorCodePropertyUnknownProperty {
+		t.Errorf("code = %v, want %v", code, ErrorCodePropertyUnknownProperty)
+	}
+
+	// Empty error -> decode failure.
+	if _, _, err := (ReadPropertyResult{}).DecodeError(); err == nil {
+		t.Fatal("DecodeError on empty result: want error, got nil")
+	} else if !errors.Is(err, ErrDecodeFailure) {
+		t.Errorf("error should wrap ErrDecodeFailure, got %v", err)
+	}
+
+	// Malformed error body -> decode failure.
+	if _, _, err := (ReadPropertyResult{Error: []byte{0x21, 0x05}}).DecodeError(); err == nil {
+		t.Fatal("DecodeError on malformed body: want error, got nil")
+	}
+}
+
 func TestClientWritePropertyAndWritePropertyMultipleSimpleACK(t *testing.T) {
 	tests := []struct {
 		name    string

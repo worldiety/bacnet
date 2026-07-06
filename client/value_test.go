@@ -173,3 +173,84 @@ func TestNameLookups(t *testing.T) {
 		t.Fatalf("UnitsName(unknown) = %q, want numeric", got)
 	}
 }
+
+func TestMultiValueList(t *testing.T) {
+	// object-list style body: three concatenated object identifiers.
+	oids := []types.ObjectIdentifier{
+		mustOID(t, types.ObjectTypeDevice, 1),
+		mustOID(t, types.ObjectTypeAnalogInput, 2),
+		mustOID(t, types.ObjectTypeAnalogValue, 3),
+	}
+	var body []byte
+	for _, o := range oids {
+		body = append(body, mustEncode(t, encoding.AppObjectIdentifier(o))...)
+	}
+
+	pv := decodeValue(body)
+	if !pv.Decoded() {
+		t.Fatalf("list should decode; raw=%x", pv.RawBytes)
+	}
+	if pv.Len() != 3 {
+		t.Fatalf("Len = %d, want 3", pv.Len())
+	}
+	if !pv.IsList() {
+		t.Fatal("IsList = false, want true")
+	}
+	// Raw is the first element for backward compatibility.
+	if got, ok := pv.ObjectID(); !ok || got != oids[0] {
+		t.Fatalf("ObjectID (first) = %v, %v; want %v", got, ok, oids[0])
+	}
+	got, ok := pv.ObjectIDs()
+	if !ok {
+		t.Fatal("ObjectIDs ok = false, want true")
+	}
+	if len(got) != 3 || got[0] != oids[0] || got[1] != oids[1] || got[2] != oids[2] {
+		t.Fatalf("ObjectIDs = %v, want %v", got, oids)
+	}
+	want := "[device:1, analog-input:2, analog-value:3]"
+	if disp := pv.Display(0); disp != want {
+		t.Fatalf("Display = %q, want %q", disp, want)
+	}
+}
+
+func TestScalarStillSingleValue(t *testing.T) {
+	// A scalar must behave exactly as before: Len 1, not a list, bare Display.
+	pv := decodeValue(mustEncode(t, ValueReal(21.5)))
+	if pv.Len() != 1 {
+		t.Fatalf("Len = %d, want 1", pv.Len())
+	}
+	if pv.IsList() {
+		t.Fatal("IsList = true, want false for scalar")
+	}
+	if disp := pv.Display(0); disp != "21.5" {
+		t.Fatalf("Display = %q, want 21.5", disp)
+	}
+	// ObjectIDs must fail cleanly for a non-OID value.
+	if _, ok := pv.ObjectIDs(); ok {
+		t.Fatal("ObjectIDs ok = true, want false for a Real")
+	}
+}
+
+func TestUndecodableValue(t *testing.T) {
+	// A context-tagged byte is not a plain application value: nothing decodes,
+	// but the raw bytes are retained.
+	pv := decodeValue([]byte{0x09, 0x01})
+	if pv.Decoded() {
+		t.Fatal("Decoded = true, want false")
+	}
+	if pv.Len() != 0 {
+		t.Fatalf("Len = %d, want 0", pv.Len())
+	}
+	if len(pv.RawBytes) != 2 {
+		t.Fatalf("RawBytes len = %d, want 2", len(pv.RawBytes))
+	}
+}
+
+func mustOID(t *testing.T, ot types.ObjectType, inst uint32) types.ObjectIdentifier {
+	t.Helper()
+	oid, err := types.NewObjectIdentifier(ot, inst)
+	if err != nil {
+		t.Fatalf("NewObjectIdentifier: %v", err)
+	}
+	return oid
+}

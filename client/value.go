@@ -14,20 +14,40 @@ import (
 // value. It exposes typed accessors so callers rarely need to type-switch on
 // the underlying encoding.ApplicationValue themselves.
 //
-// If the device returned a value the library could not decode, Raw is nil and
-// RawBytes holds the original application-tagged bytes so nothing is lost.
-// Character strings in any standard character set (UTF-8, ISO-8859-1,
-// UCS-2/UTF-16BE, UCS-4/UTF-32BE) decode successfully, so Text() and Display()
-// work without a recovery path; use Charset to inspect the original encoding.
+// A property value on the wire may hold a single application value (e.g. a Real
+// present-value) or a sequence of them (a list-valued property such as
+// object-list, state-text, priority-array or property-list). Raw is always the
+// first decoded value; Values holds every decoded value in order. For scalar
+// properties len(Values) == 1.
+//
+// If the device returned a value the library could not decode, Raw is nil,
+// Values is empty and RawBytes holds the original application-tagged bytes so
+// nothing is lost. Character strings in any standard character set (UTF-8,
+// ISO-8859-1, UCS-2/UTF-16BE, UCS-4/UTF-32BE) decode successfully, so Text()
+// and Display() work without a recovery path; use Charset to inspect the
+// original encoding.
 type PropertyValue struct {
-	// Raw is the decoded value, or nil if decoding failed.
+	// Raw is the first decoded value, or nil if decoding failed. For a
+	// list-valued property it is the first element (equal to Values[0]).
 	Raw encoding.ApplicationValue
+	// Values holds every decoded application value in wire order. It has one
+	// element for a scalar property, several for a list-valued property, and is
+	// empty when decoding failed.
+	Values []encoding.ApplicationValue
 	// RawBytes holds the original application-tagged bytes.
 	RawBytes []byte
 }
 
 // Decoded reports whether the value was successfully decoded.
 func (v PropertyValue) Decoded() bool { return v.Raw != nil }
+
+// Len reports how many application values were decoded. It is 0 for an
+// undecodable value, 1 for a scalar property, and more for a list-valued one.
+func (v PropertyValue) Len() int { return len(v.Values) }
+
+// IsList reports whether the value holds more than one application value (a
+// list-valued property such as object-list or state-text).
+func (v PropertyValue) IsList() bool { return len(v.Values) > 1 }
 
 // IsNull reports whether the value is a BACnet Null.
 func (v PropertyValue) IsNull() bool {
@@ -80,7 +100,8 @@ func (v PropertyValue) Bool() (bool, bool) {
 // The library decodes the standard BACnet character sets (UTF-8, ISO-8859-1,
 // UCS-2/UTF-16BE and UCS-4/UTF-32BE), so Raw is a proper AppCharacterString for
 // conformant and common non-conformant devices alike and this accessor works
-// without any caller-side recovery.
+// without any caller-side recovery. For a list-valued property it returns the
+// first string; use Values to reach the rest.
 func (v PropertyValue) Text() (string, bool) {
 	if t, ok := v.Raw.(encoding.AppCharacterString); ok {
 		return string(t), true
@@ -94,6 +115,25 @@ func (v PropertyValue) ObjectID() (types.ObjectIdentifier, bool) {
 		return types.ObjectIdentifier(t), true
 	}
 	return 0, false
+}
+
+// ObjectIDs returns every value as an object identifier. It is the natural
+// accessor for list-valued reference properties such as object-list and
+// property-list. It returns false if the value is undecodable or any element is
+// not an object identifier.
+func (v PropertyValue) ObjectIDs() ([]types.ObjectIdentifier, bool) {
+	if len(v.Values) == 0 {
+		return nil, false
+	}
+	out := make([]types.ObjectIdentifier, len(v.Values))
+	for i, e := range v.Values {
+		oid, ok := e.(encoding.AppObjectIdentifier)
+		if !ok {
+			return nil, false
+		}
+		out[i] = types.ObjectIdentifier(oid)
+	}
+	return out, true
 }
 
 // Charset returns the BACnet character set of a Character String value as it
@@ -119,6 +159,9 @@ func (v PropertyValue) Charset() (encoding.CharacterSet, bool) {
 // Display renders the value as a human-readable string. pid provides context
 // so that, for example, a units enumeration or an object-type is rendered with
 // its name. Pass a zero PropertyIdentifier when no context is available.
+//
+// A list-valued property is rendered as "[a, b, c]"; a scalar renders as the
+// bare value.
 func (v PropertyValue) Display(pid types.PropertyIdentifier) string {
 	if v.Raw == nil {
 		if len(v.RawBytes) == 0 {
@@ -126,7 +169,14 @@ func (v PropertyValue) Display(pid types.PropertyIdentifier) string {
 		}
 		return fmt.Sprintf("(raw 0x%s)", hex.EncodeToString(v.RawBytes))
 	}
-	return formatValue(v.Raw, pid)
+	if len(v.Values) <= 1 {
+		return formatValue(v.Raw, pid)
+	}
+	parts := make([]string, len(v.Values))
+	for i, e := range v.Values {
+		parts[i] = formatValue(e, pid)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 // String renders the value without property context.

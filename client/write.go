@@ -94,3 +94,80 @@ func (c *Client) WriteAndReadBack(ctx context.Context, target Target, obj Object
 	}
 	return c.ReadProperty(ctx, addrTarget, obj, pid, ro...)
 }
+
+// PropertyWrite describes one property write within a WriteSpec.
+type PropertyWrite struct {
+	// Property is the property to write.
+	Property types.PropertyIdentifier
+	// Value is the value to write.
+	Value encoding.ApplicationValue
+	// ArrayIndex writes a single array element. Nil writes the whole property.
+	ArrayIndex *uint32
+	// Priority is the BACnet write priority (1..16) for commandable properties.
+	// Nil writes without a priority.
+	Priority *uint8
+}
+
+// WriteSpec groups several property writes for a single object.
+type WriteSpec struct {
+	Object Object
+	Values []PropertyWrite
+}
+
+// WritePropertiesMultiple writes several properties (across one or more objects)
+// in a single WritePropertyMultiple (WPM) request. This is both faster than
+// issuing one WriteProperty per value and, per the BACnet standard, applied by
+// the device as a single ordered operation.
+//
+// Unlike the read helpers, WritePropertiesMultiple does not fall back to
+// individual writes when a device lacks WPM support: splitting an atomic
+// multi-write into separate requests would silently change its semantics. If
+// the device does not support WPM the underlying error is returned unchanged
+// (see Describe); the caller can then choose to issue individual WriteProperty
+// calls if per-write semantics are acceptable.
+func (c *Client) WritePropertiesMultiple(ctx context.Context, target Target, writes []WriteSpec) error {
+	dst, _, err := c.resolveTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	if len(writes) == 0 {
+		return fmt.Errorf("no writes provided")
+	}
+
+	specs := make([]apdu.WriteAccessSpecification, 0, len(writes))
+	for _, w := range writes {
+		if len(w.Values) == 0 {
+			return fmt.Errorf("write for %s has no values", w.Object)
+		}
+		values := make([]apdu.PropertyValueWrite, 0, len(w.Values))
+		for _, pw := range w.Values {
+			if pw.Priority != nil && (*pw.Priority < 1 || *pw.Priority > 16) {
+				return fmt.Errorf("priority must be between 1 and 16")
+			}
+			encoded, err := encoding.EncodeApplicationValue(pw.Value)
+			if err != nil {
+				return fmt.Errorf("encode value for %s %s: %w", w.Object, PropertyName(pw.Property), err)
+			}
+			values = append(values, apdu.PropertyValueWrite{
+				PropertyIdentifier: pw.Property,
+				ArrayIndex:         pw.ArrayIndex,
+				PropertyValue:      encoded,
+				Priority:           pw.Priority,
+			})
+		}
+		specs = append(specs, apdu.WriteAccessSpecification{
+			ObjectIdentifier: w.Object.OID(),
+			Values:           values,
+		})
+	}
+
+	req, err := apdu.NewWritePropertyMultipleRequest(specs)
+	if err != nil {
+		return fmt.Errorf("build write-property-multiple request: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, c.requestBudget())
+	defer cancel()
+
+	return c.apduClient().WritePropertyMultiple(reqCtx, dst, req)
+}

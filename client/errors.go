@@ -48,3 +48,56 @@ func IsRemoteError(err error) bool {
 	var remoteErr apdu.RemoteErrorAPDU
 	return errors.As(err, &remoteErr)
 }
+
+// rpmUnusable reports whether err from a ReadPropertyMultiple attempt means the
+// service cannot be used against this device, so the caller should fall back to
+// reading each property individually. It recognizes four signals:
+//
+//   - a Reject with reason "unrecognized-service" (the device does not
+//     implement ReadPropertyMultiple);
+//   - an Error with code "service-request-denied" or the communication
+//     "unrecognized-service" code (some devices report unsupported this way);
+//   - an Abort due to buffer-overflow, APDU-too-long or
+//     segmentation-not-supported (the response would not fit a single APDU);
+//   - ErrSegmentationNotSupported, which this client returns when a device
+//     answers with a segmented response (the receive path does not reassemble
+//     segments).
+//
+// Timeouts, per-property errors and other failures are not treated as
+// "unusable" and are surfaced to the caller.
+func rpmUnusable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, apdu.ErrSegmentationNotSupported) {
+		return true
+	}
+
+	var rejectErr apdu.RemoteRejectAPDU
+	if errors.As(err, &rejectErr) {
+		return rejectErr.RejectReason == apdu.RejectReasonUnrecognizedService
+	}
+
+	var remoteErr apdu.RemoteErrorAPDU
+	if errors.As(err, &remoteErr) {
+		switch remoteErr.ErrorCode {
+		case apdu.ErrorCodeServicesServiceRequestDenied,
+			apdu.ErrorCodeCommunicationRejectUnrecognizedService:
+			return true
+		}
+		return false
+	}
+
+	var abortErr apdu.RemoteAbortAPDU
+	if errors.As(err, &abortErr) {
+		switch abortErr.AbortReason {
+		case apdu.AbortReasonBufferOverflow,
+			apdu.AbortReasonAPDUTooLong,
+			apdu.AbortReasonSegmentationNotSupported:
+			return true
+		}
+		return false
+	}
+
+	return false
+}

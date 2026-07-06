@@ -62,15 +62,31 @@ func (c *Client) readProperty(ctx context.Context, dst netprim.Address, oid type
 
 // decodeValue turns raw application-tagged bytes into a PropertyValue, keeping
 // the raw bytes when decoding fails so callers can still recover the content.
+//
+// A property body may hold a single application value or a sequence of them (a
+// list-valued property such as object-list). Every leading application value is
+// decoded into PropertyValue.Values, with Raw set to the first. Decoding stops
+// at the first byte that is not a plain application value (e.g. a
+// context/constructed segment); anything decoded so far is retained along with
+// the full RawBytes.
 func decodeValue(raw []byte) PropertyValue {
 	if len(raw) == 0 {
 		return PropertyValue{RawBytes: raw}
 	}
-	val, _, err := encoding.DecodeApplicationValue(raw, 0)
-	if err != nil {
+	var vals []encoding.ApplicationValue
+	off := 0
+	for off < len(raw) {
+		v, next, err := encoding.DecodeApplicationValue(raw, off)
+		if err != nil || next <= off {
+			break
+		}
+		vals = append(vals, v)
+		off = next
+	}
+	if len(vals) == 0 {
 		return PropertyValue{RawBytes: raw}
 	}
-	return PropertyValue{Raw: val, RawBytes: raw}
+	return PropertyValue{Raw: vals[0], Values: vals, RawBytes: raw}
 }
 
 // ObjectListOptions configures ReadObjectList.
@@ -203,18 +219,203 @@ type PropertyResult struct {
 // property (gentle on slow lines and robust against unsupported properties). It
 // resolves the target once. Per-property errors are captured in the results
 // rather than aborting. Pacing (if configured) is applied between reads.
+//
+// For fewer round-trips against capable devices, prefer ReadPropertiesMultiple,
+// which uses a single ReadPropertyMultiple request and falls back to this
+// per-property path automatically.
 func (c *Client) ReadProperties(ctx context.Context, target Target, obj Object, pids []types.PropertyIdentifier) ([]PropertyResult, error) {
 	dst, _, err := c.resolveTarget(ctx, target)
 	if err != nil {
 		return nil, err
 	}
+	return c.readPropertiesIndividually(ctx, dst, obj, pids), nil
+}
+
+// ReadSpec requests several properties of one object for ReadMultiple.
+type ReadSpec struct {
+	// Object is the object to read from.
+	Object Object
+	// Properties are the property identifiers to read. Array properties are read
+	// whole; use ReadProperty with AtIndex for a single element.
+	Properties []types.PropertyIdentifier
+}
+
+// ObjectResult pairs an object with the per-property results of a multi-read.
+type ObjectResult struct {
+	Object     Object
+	Properties []PropertyResult
+}
+
+// ReadPropertiesMultiple reads several properties of one object using a single
+// ReadPropertyMultiple (RPM) request — one round-trip instead of one per
+// property. Results are returned in the same order as pids, with per-property
+// errors captured in each PropertyResult rather than aborting.
+//
+// If the device does not support RPM, or the response would not fit a single
+// APDU (this client does not reassemble segmented responses), the call
+// transparently falls back to reading each property individually, so the result
+// is the same shape either way. Any other failure (e.g. a timeout) is returned
+// as the error.
+func (c *Client) ReadPropertiesMultiple(ctx context.Context, target Target, obj Object, pids []types.PropertyIdentifier) ([]PropertyResult, error) {
+	dst, _, err := c.resolveTarget(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	if len(pids) == 0 {
+		return nil, nil
+	}
+
+	results, err := c.readPropertyMultiple(ctx, dst, []ReadSpec{{Object: obj, Properties: pids}})
+	if err != nil {
+		if rpmUnusable(err) {
+			return c.readPropertiesIndividually(ctx, dst, obj, pids), nil
+		}
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("read-property-multiple returned no results for %s", obj)
+	}
+	return results[0].Properties, nil
+}
+
+// ReadMultiple reads several properties of several objects using a single
+// ReadPropertyMultiple (RPM) request. It is the most efficient way to sample
+// many points at once. Results are returned one ObjectResult per spec, in the
+// same order as specs, each carrying its properties in the requested order.
+// Per-property errors are captured in each PropertyResult.
+//
+// As with ReadPropertiesMultiple, if the device does not support RPM or the
+// response would not fit a single APDU, the call falls back to reading each
+// property individually.
+func (c *Client) ReadMultiple(ctx context.Context, target Target, specs []ReadSpec) ([]ObjectResult, error) {
+	dst, _, err := c.resolveTarget(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	if len(specs) == 0 {
+		return nil, nil
+	}
+
+	results, err := c.readPropertyMultiple(ctx, dst, specs)
+	if err != nil {
+		if rpmUnusable(err) {
+			return c.readMultipleIndividually(ctx, dst, specs), nil
+		}
+		return nil, err
+	}
+	return results, nil
+}
+
+// readPropertyMultiple performs one RPM request for specs against an
+// already-resolved address and maps the ACK back to the requested order.
+func (c *Client) readPropertyMultiple(ctx context.Context, dst netprim.Address, specs []ReadSpec) ([]ObjectResult, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, c.requestBudget())
+	defer cancel()
+
+	accessSpecs := make([]apdu.ReadAccessSpecification, 0, len(specs))
+	for _, spec := range specs {
+		props := make([]apdu.PropertyReference, 0, len(spec.Properties))
+		for _, pid := range spec.Properties {
+			props = append(props, apdu.PropertyReference{PropertyIdentifier: pid})
+		}
+		accessSpecs = append(accessSpecs, apdu.ReadAccessSpecification{
+			ObjectIdentifier: spec.Object.OID(),
+			Properties:       props,
+		})
+	}
+
+	req, err := apdu.NewReadPropertyMultipleRequest(accessSpecs)
+	if err != nil {
+		return nil, err
+	}
+	ack, err := c.apduClient().ReadPropertyMultiple(reqCtx, dst, req)
+	if err != nil {
+		return nil, err
+	}
+	return mapRPMResults(specs, ack), nil
+}
+
+// mapRPMResults turns an RPM ACK into ObjectResults ordered to match specs. It
+// matches each requested (object, property) to a returned result; unmatched
+// requests are reported as errors so the output always mirrors the request.
+func mapRPMResults(specs []ReadSpec, ack apdu.ReadPropertyMultipleACK) []ObjectResult {
+	// Index returned property results by (object, property) for order-independent
+	// lookup, since some devices reorder results.
+	type key struct {
+		oid types.ObjectIdentifier
+		pid types.PropertyIdentifier
+	}
+	index := make(map[key]apdu.ReadPropertyResult)
+	for _, ar := range ack.Results {
+		for _, pr := range ar.Results {
+			index[key{ar.ObjectIdentifier, pr.PropertyIdentifier}] = pr
+		}
+	}
+
+	out := make([]ObjectResult, 0, len(specs))
+	for _, spec := range specs {
+		oid := spec.Object.OID()
+		props := make([]PropertyResult, 0, len(spec.Properties))
+		for _, pid := range spec.Properties {
+			pr, ok := index[key{oid, pid}]
+			if !ok {
+				props = append(props, PropertyResult{
+					Property: pid,
+					Err:      fmt.Errorf("no result returned for %s %s", spec.Object, PropertyName(pid)),
+				})
+				continue
+			}
+			props = append(props, propertyResultFromRPM(pid, pr))
+		}
+		out = append(out, ObjectResult{Object: spec.Object, Properties: props})
+	}
+	return out
+}
+
+// propertyResultFromRPM converts one RPM property entry into a PropertyResult,
+// decoding either the value or the per-property error.
+func propertyResultFromRPM(pid types.PropertyIdentifier, pr apdu.ReadPropertyResult) PropertyResult {
+	if pr.Error != nil {
+		class, code, derr := pr.DecodeError()
+		if derr != nil {
+			return PropertyResult{Property: pid, Err: derr}
+		}
+		return PropertyResult{
+			Property: pid,
+			Err: apdu.RemoteErrorAPDU{
+				ServiceChoice: apdu.ServiceChoiceReadPropertyMultiple,
+				ErrorClass:    class,
+				ErrorCode:     code,
+			},
+		}
+	}
+	return PropertyResult{Property: pid, Value: decodeValue(pr.PropertyValue)}
+}
+
+// readPropertiesIndividually reads each property with its own ReadProperty
+// request against an already-resolved address, capturing per-property errors.
+// It is the per-property fallback for ReadPropertiesMultiple and the engine
+// behind ReadProperties.
+func (c *Client) readPropertiesIndividually(ctx context.Context, dst netprim.Address, obj Object, pids []types.PropertyIdentifier) []PropertyResult {
 	results := make([]PropertyResult, 0, len(pids))
 	for _, pid := range pids {
 		v, rerr := c.readProperty(ctx, dst, obj.OID(), pid, nil)
 		results = append(results, PropertyResult{Property: pid, Value: v, Err: rerr})
 		c.pace(ctx)
 	}
-	return results, nil
+	return results
+}
+
+// readMultipleIndividually is the per-property fallback for ReadMultiple.
+func (c *Client) readMultipleIndividually(ctx context.Context, dst netprim.Address, specs []ReadSpec) []ObjectResult {
+	out := make([]ObjectResult, 0, len(specs))
+	for _, spec := range specs {
+		out = append(out, ObjectResult{
+			Object:     spec.Object,
+			Properties: c.readPropertiesIndividually(ctx, dst, spec.Object, spec.Properties),
+		})
+	}
+	return out
 }
 
 // DefaultProperties returns a reasonable set of properties to display for an

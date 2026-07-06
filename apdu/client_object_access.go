@@ -217,6 +217,17 @@ type ReadPropertyResult struct {
 	Error              []byte
 }
 
+// DecodeError decodes the per-property error of a ReadPropertyMultiple result
+// into its error-class and error-code. It is meaningful only when this result
+// carried an error rather than a value (Error != nil); it returns
+// ErrDecodeFailure when Error is empty or malformed.
+func (r ReadPropertyResult) DecodeError() (ErrorClass, ErrorCode, error) {
+	if len(r.Error) == 0 {
+		return ErrorClassUnknown, ErrorCodeUnknown, fmt.Errorf("%w: read-property result has no error", ErrDecodeFailure)
+	}
+	return decodeErrorPayload(r.Error)
+}
+
 // ReadAccessResult carries all property results for one object.
 type ReadAccessResult struct {
 	ObjectIdentifier types.ObjectIdentifier
