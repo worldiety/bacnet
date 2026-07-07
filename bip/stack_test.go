@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +22,9 @@ type pipeConn struct {
 	queue    []queuedResponse
 	readIdx  int
 	writeErr error
-	closed   bool
+
+	mu     sync.Mutex
+	closed bool
 
 	written []struct {
 		data []byte
@@ -29,13 +32,19 @@ type pipeConn struct {
 	}
 }
 
+func (p *pipeConn) isClosed() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.closed
+}
+
 func (p *pipeConn) ReadFromUDPAddrPort(buf []byte) (int, netip.AddrPort, error) {
-	if p.closed {
+	if p.isClosed() {
 		return 0, netip.AddrPort{}, ErrReadFailure
 	}
 	if p.readIdx >= len(p.queue) {
 		// Block until closed (simulates an idle socket).
-		for !p.closed {
+		for !p.isClosed() {
 			time.Sleep(time.Millisecond)
 		}
 		return 0, netip.AddrPort{}, ErrReadFailure
@@ -60,7 +69,9 @@ func (p *pipeConn) WriteToUDPAddrPort(data []byte, addr netip.AddrPort) (int, er
 }
 
 func (p *pipeConn) Close() error {
+	p.mu.Lock()
 	p.closed = true
+	p.mu.Unlock()
 	return nil
 }
 
@@ -388,5 +399,66 @@ func TestStackRunSkipsNonAPDUFrames(t *testing.T) {
 
 	if len(ase.calls) != 0 {
 		t.Fatalf("OnInboundNPDU calls = %d, want 0 (non-APDU frame should be skipped)", len(ase.calls))
+	}
+}
+
+// minSourcedNPDU builds a routed I-Am NPDU carrying a source specifier
+// (SNET/SADR), as a router emits for a message originating on a remote network.
+func minSourcedNPDU(t *testing.T, snet uint16, sadr []byte, apduBytes []byte) []byte {
+	t.Helper()
+	pkt, err := npdu.NewSourcedAPDU(
+		npdu.OriginalSourceNetworkNumber(snet),
+		npdu.OriginalSourceMacLayerAddress(sadr),
+		netprim.NetworkPriorityNormal,
+		false,
+		apduBytes,
+	)
+	if err != nil {
+		t.Fatalf("NewSourcedAPDU: %v", err)
+	}
+	b, err := pkt.Encode()
+	if err != nil {
+		t.Fatalf("NPDU.Encode: %v", err)
+	}
+	return b
+}
+
+// TestStackRunExtractsRoutedSource verifies that a message arriving with an
+// NPDU source specifier (a device on a remote network behind a router) carries
+// its originating network and MAC into the src Address, while AddrPort remains
+// the router's B/IP address (the UDP sender).
+func TestStackRunExtractsRoutedSource(t *testing.T) {
+	router := netip.MustParseAddrPort("10.6.6.110:47808")
+	// I-Am from an MS/TP node: network 4, MAC 0x22.
+	npduBytes := minSourcedNPDU(t, 4, []byte{0x22}, []byte{0x10, 0x00})
+	wire := buildOriginalUnicastFrame(t, npduBytes)
+
+	conn := &pipeConn{queue: []queuedResponse{{data: wire, src: router}}}
+	s := mustStack(t, conn)
+	ase := &testASE{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, ase) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	if len(ase.calls) != 1 {
+		t.Fatalf("OnInboundNPDU calls = %d, want 1", len(ase.calls))
+	}
+	src := ase.calls[0].src
+	if src.Network != 4 {
+		t.Errorf("src.Network = %d, want 4 (remote network)", src.Network)
+	}
+	if len(src.MAC) != 1 || src.MAC[0] != 0x22 {
+		t.Errorf("src.MAC = % x, want 22", src.MAC)
+	}
+	if src.AddrPort != router {
+		t.Errorf("src.AddrPort = %v, want router %v", src.AddrPort, router)
+	}
+	if !src.IsRouted() {
+		t.Error("src.IsRouted() = false, want true")
 	}
 }

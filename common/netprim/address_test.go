@@ -15,6 +15,68 @@ func TestNewAddressRejectsOversizedMAC(t *testing.T) {
 	}
 }
 
+func TestRoutedAddress(t *testing.T) {
+	router := netip.MustParseAddrPort("10.6.6.110:47808")
+	a := NewRoutedAddress(router, 4, []byte{0x22})
+
+	if !a.IsRouted() {
+		t.Fatal("IsRouted = false, want true for a routed device")
+	}
+	if a.IsLocal() {
+		t.Fatal("IsLocal = true, want false")
+	}
+	if a.AddrPort != router {
+		t.Fatalf("AddrPort = %v, want router %v", a.AddrPort, router)
+	}
+	if a.Network != 4 {
+		t.Fatalf("Network = %d, want 4", a.Network)
+	}
+	if len(a.MAC) != 1 || a.MAC[0] != 0x22 {
+		t.Fatalf("MAC = % x, want 22", a.MAC)
+	}
+
+	// NewRoutedAddress must copy the MAC (no aliasing of caller's slice).
+	mac := []byte{0x22}
+	b := NewRoutedAddress(router, 4, mac)
+	mac[0] = 0x99
+	if b.MAC[0] != 0x22 {
+		t.Fatal("NewRoutedAddress did not copy the MAC slice")
+	}
+
+	// A local BACnet/IP address is not routed.
+	local := NewAddressFromAddrPort(router)
+	if local.IsRouted() {
+		t.Fatal("local address reported as routed")
+	}
+}
+
+func TestAddressEqualMACAware(t *testing.T) {
+	router := netip.MustParseAddrPort("10.6.6.110:47808")
+	a := NewRoutedAddress(router, 4, []byte{0x22})
+	b := NewRoutedAddress(router, 4, []byte{0x23}) // same router+net, different node
+	if a.Equal(b) {
+		t.Fatal("routed addresses with different MACs must not be equal")
+	}
+	c := NewRoutedAddress(router, 4, []byte{0x22})
+	if !a.Equal(c) {
+		t.Fatal("routed addresses with identical fields must be equal")
+	}
+	// A local address with the same AddrPort but no MAC must differ.
+	if a.Equal(NewAddressFromAddrPort(router)) {
+		t.Fatal("routed address must not equal a local address at the same IP")
+	}
+}
+
+func TestAddressString(t *testing.T) {
+	router := netip.MustParseAddrPort("10.6.6.110:47808")
+	if got := NewRoutedAddress(router, 4, []byte{0x22}).String(); got != "4:22@10.6.6.110:47808" {
+		t.Fatalf("routed String = %q", got)
+	}
+	if got := NewAddressFromAddrPort(router).String(); got != "10.6.6.110:47808" {
+		t.Fatalf("local String = %q", got)
+	}
+}
+
 // TestAddrPortToAddress verifies round-trip and error cases.
 func TestAddrPortToAddress(t *testing.T) {
 	tests := []struct {

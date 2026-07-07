@@ -23,10 +23,12 @@ func cmdDiscover(args []string) error {
 	window := fs.Duration("window", 5*time.Second, "how long to collect I-Am responses")
 	lowLimit := fs.Int("low", -1, "optional lowest device instance to query (-1 = unbounded)")
 	highLimit := fs.Int("high", -1, "optional highest device instance to query (-1 = unbounded)")
+	localOnly := fs.Bool("local-only", false, "send a local Who-Is only (not forwarded by routers; excludes MS/TP devices behind a router)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: bacnetf discover [flags]\n\n")
 		fmt.Fprintf(fs.Output(), "Broadcast Who-Is and list responding devices.\n")
-		fmt.Fprintf(fs.Output(), "By default a Who-Is is sent on every broadcast-capable interface.\n\n")
+		fmt.Fprintf(fs.Output(), "By default a global-broadcast Who-Is is sent on every broadcast-capable\n")
+		fmt.Fprintf(fs.Output(), "interface, so BACnet routers forward it to remote networks (e.g. MS/TP).\n\n")
 		fs.PrintDefaults()
 	}
 	pos, err := parseArgs(fs, args)
@@ -39,6 +41,9 @@ func cmdDiscover(args []string) error {
 	}
 
 	discOpts := []client.DiscoverOption{client.WithWindow(*window)}
+	if *localOnly {
+		discOpts = append(discOpts, client.WithLocalOnly())
+	}
 	if *lowLimit >= 0 || *highLimit >= 0 {
 		if *lowLimit < 0 || *highLimit < 0 {
 			return fmt.Errorf("both --low and --high must be set to use a device range")
@@ -74,10 +79,15 @@ func cmdDiscover(args []string) error {
 	}
 
 	fmt.Printf("\nFound %d device(s):\n", len(devices))
-	fmt.Printf("%-10s  %-21s  %-8s  %s\n", "DEVICE", "ADDRESS", "VENDOR", "MAX-APDU / SEGMENTATION")
+	fmt.Printf("%-10s  %-25s  %-8s  %s\n", "DEVICE", "ADDRESS", "VENDOR", "MAX-APDU / SEGMENTATION")
 	for _, d := range devices {
-		fmt.Printf("%-10d  %-21s  %-8d  %d / %s\n",
-			d.ID, d.Address, d.Vendor, d.MaxAPDU, d.Segmentation)
+		addr := d.Address.String()
+		if d.IsRouted() {
+			// Show the remote network and node MAC for devices behind a router.
+			addr = fmt.Sprintf("%s (net %d mac %x)", d.Address, d.Network, d.MAC)
+		}
+		fmt.Printf("%-10d  %-25s  %-8d  %d / %s\n",
+			d.ID, addr, d.Vendor, d.MaxAPDU, d.Segmentation)
 	}
 	return nil
 }

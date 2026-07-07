@@ -77,8 +77,9 @@ func (c *Client) WriteAndReadBack(ctx context.Context, target Target, obj Object
 	if err != nil {
 		return PropertyValue{}, err
 	}
-	// Address the resolved device directly for both operations.
-	addrTarget := TargetAddr(dst.AddrPort)
+	// Address the resolved device directly for both operations, preserving any
+	// routing (remote network + MAC) so a routed device stays reachable.
+	addrTarget := targetForAddress(dst)
 
 	if err := c.WriteProperty(ctx, addrTarget, obj, pid, value, opts...); err != nil {
 		return PropertyValue{}, err

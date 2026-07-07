@@ -156,5 +156,16 @@ func (s *Stack) dispatchFrame(ctx context.Context, ase apdu.ASE, frame Frame, se
 		return fmt.Errorf("decode npdu: %w", err)
 	}
 
+	// If the NPDU carries a source specifier, the message originated on a remote
+	// network (e.g. an MS/TP node behind a router). Preserve the originating
+	// network number and MAC so the device can be addressed for later requests;
+	// AddrPort remains the router's B/IP address (where replies are sent).
+	if pkt.HasSourceSpecifier() {
+		if snet := pkt.SNET(); snet != nil {
+			src.Network = snet.ToBacnetNetworkNumber()
+			src.MAC = pkt.SADR()
+		}
+	}
+
 	return ase.OnInboundNPDU(ctx, src, pkt)
 }

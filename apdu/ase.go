@@ -148,7 +148,7 @@ type segmentedServerKey string
 // segmentedServerKeyFor returns the map key for an in-progress segmented
 // server transaction identified by its source address and invoke ID.
 func segmentedServerKeyFor(src netprim.Address, id InvokeID) segmentedServerKey {
-	return segmentedServerKey(fmt.Sprintf("%d:%x:%d", id, src.AddrPortBytes(), src.Network))
+	return segmentedServerKey(fmt.Sprintf("%d:%x:%d:%x", id, src.AddrPortBytes(), src.Network, src.MAC))
 }
 
 type transaction struct {
@@ -607,10 +607,7 @@ func (a *aseImpl) startTransaction(
 				maxRetries:           transactionRetryCount(a.cfg.APDURetries),
 				requestPayloadLength: requestPayloadLength,
 			}),
-			expectedPeer: netprim.Address{
-				Network:  expectedPeer.Network,
-				AddrPort: expectedPeer.AddrPort,
-			},
+			expectedPeer:          expectedPeer,
 			expectedServiceChoice: expectedServiceChoice,
 		}
 
@@ -656,12 +653,9 @@ func (a *aseImpl) syncSegmentedServerResponseEntry(src netprim.Address, priority
 	machine.SetSegmentTimeout(expiresAt)
 
 	a.outboundSegmentedServerEntries[key] = &segmentedServerResponseEntry{
-		machine:  machine,
-		priority: priority,
-		src: netprim.Address{
-			Network:  src.Network,
-			AddrPort: src.AddrPort,
-		},
+		machine:   machine,
+		priority:  priority,
+		src:       src,
 		expiresAt: expiresAt,
 	}
 }
@@ -1390,9 +1384,29 @@ func buildOutboundNPDU(dst netprim.Address, priority netprim.NetworkPriority, ex
 		return *packet, nil
 	}
 
+	// A global broadcast (DNET 0xFFFF) must carry no destination MAC (DLEN = 0):
+	// it asks every router to broadcast the message onto all of its networks,
+	// which is how a Who-Is reaches devices on remote networks (e.g. MS/TP nodes
+	// behind a BACnet/IP router). The UDP datagram itself is still sent to
+	// dst.AddrPort (a router's IP or an IP broadcast).
+	//
+	// For a specific routed device, the DADR is the device's MAC on its remote
+	// network (dst.MAC, e.g. one MS/TP byte), while the UDP datagram is sent to
+	// the router's B/IP address (dst.AddrPort). Without a MAC (a legacy caller
+	// that only set Network) we fall back to the 6-byte B/IP address.
+	var dadr npdu.UltimateDestinationMacLayerAddress
+	switch {
+	case dst.Network.IsGlobalBroadcast():
+		dadr = nil
+	case len(dst.MAC) > 0:
+		dadr = npdu.UltimateDestinationMacLayerAddress(slices.Clone(dst.MAC))
+	default:
+		dadr = npdu.UltimateDestinationMacLayerAddress(dst.AddrPortBytes())
+	}
+
 	packet, err := npdu.NewRoutedAPDU(
 		npdu.UltimateDestinationNetworkNumber(dst.Network),
-		npdu.UltimateDestinationMacLayerAddress(dst.AddrPortBytes()),
+		dadr,
 		255,
 		priority,
 		expectingReply,

@@ -18,10 +18,15 @@ import (
 type Device struct {
 	// ID is the device object instance (the "BACnet device ID").
 	ID uint32
-	// Address is the device's BACnet/IP transport address.
+	// Address is the device's BACnet/IP transport address. For a routed device
+	// this is the address of the router that serves it.
 	Address netip.AddrPort
 	// Network is the BACnet network number the device was seen on (0 = local).
 	Network uint16
+	// MAC is the device's MAC on its own (remote) network, set only for routed
+	// devices reached through a router (e.g. one byte for an MS/TP node). It is
+	// nil for directly-reachable BACnet/IP devices.
+	MAC []byte
 	// Vendor is the BACnet vendor identifier.
 	Vendor uint16
 	// MaxAPDU is the maximum APDU length the device accepts.
@@ -29,6 +34,10 @@ type Device struct {
 	// Segmentation describes the device's segmentation support.
 	Segmentation string
 }
+
+// IsRouted reports whether the device is on a remote network reached through a
+// router (rather than a directly-reachable BACnet/IP device).
+func (d Device) IsRouted() bool { return d.Network != 0 && len(d.MAC) > 0 }
 
 // String renders the device as "device <id> @ <ip:port>".
 func (d Device) String() string {
@@ -41,10 +50,27 @@ func deviceFromIndication(ind apdu.IAmIndication) Device {
 		ID:           ind.DeviceIdentifier.Instance(),
 		Address:      ind.Source.AddrPort,
 		Network:      uint16(ind.Source.Network),
+		MAC:          ind.Source.MAC,
 		Vendor:       ind.VendorID,
 		MaxAPDU:      int(ind.MaxAPDULengthAccepted),
 		Segmentation: fmt.Sprintf("%v", ind.SegmentationSupported),
 	}
+}
+
+// address returns the transport Address for this device, preserving routing
+// (remote network + MAC) so requests reach it through its router.
+func (d Device) address() netprim.Address {
+	if d.IsRouted() {
+		return netprim.NewRoutedAddress(d.Address, netprim.NetworkNumber(d.Network), d.MAC)
+	}
+	return netprim.NewAddressFromAddrPort(d.Address)
+}
+
+// Target returns a Target addressing this device by its resolved transport
+// address, preserving routing (remote network + MAC). Use it to avoid a second
+// Who-Is resolution after discovery.
+func (d Device) Target() Target {
+	return targetForAddress(d.address())
 }
 
 // DiscoverOptions configures a Discover call.
@@ -55,6 +81,11 @@ type DiscoverOptions struct {
 	// Both must be set together; leave both nil for an unbounded Who-Is.
 	Low  *uint32
 	High *uint32
+	// LocalOnly, when true, sends the Who-Is only to the local network instead
+	// of as a global broadcast. By default discovery uses a global broadcast
+	// (DNET 0xFFFF) so BACnet routers forward it to remote networks (e.g. MS/TP
+	// segments), which is required to discover devices behind a router.
+	LocalOnly bool
 }
 
 // DiscoverOption mutates DiscoverOptions.
@@ -68,6 +99,13 @@ func WithWindow(d time.Duration) DiscoverOption {
 // WithInstanceRange restricts discovery to device instances in [low, high].
 func WithInstanceRange(low, high uint32) DiscoverOption {
 	return func(o *DiscoverOptions) { o.Low, o.High = &low, &high }
+}
+
+// WithLocalOnly restricts the Who-Is to the local network (no global broadcast),
+// so it is not forwarded by routers. Use this to discover only directly-reachable
+// BACnet/IP devices.
+func WithLocalOnly() DiscoverOption {
+	return func(o *DiscoverOptions) { o.LocalOnly = true }
 }
 
 // Discover sends a Who-Is on every broadcast target (all broadcast-capable
@@ -93,6 +131,7 @@ func (c *Client) Discover(ctx context.Context, opts ...DiscoverOption) ([]Device
 	if err != nil {
 		return nil, err
 	}
+	targets = withGlobalBroadcast(targets, !o.LocalOnly)
 
 	found, err := c.collect(ctx, targets, whoIs, o.Window, 0)
 	if err != nil {
@@ -129,6 +168,9 @@ func (c *Client) Resolve(ctx context.Context, deviceInstance uint32) (Device, er
 	if err != nil {
 		return Device{}, err
 	}
+	// Resolve via global broadcast so device IDs on remote networks (e.g. behind
+	// a router on MS/TP) can be found, not just local BACnet/IP devices.
+	targets = withGlobalBroadcast(targets, true)
 
 	window := c.cfg.resolveWindow()
 	found, err := c.collect(ctx, targets, whoIs, window, deviceInstance)
@@ -165,7 +207,9 @@ func (c *Client) resolveTarget(ctx context.Context, t Target) (netprim.Address, 
 	if err != nil {
 		return netprim.Address{}, 0, err
 	}
-	return netprim.NewAddressFromAddrPort(d.Address), d.ID, nil
+	// Preserve routing (remote network + MAC) so requests to a device behind a
+	// router are sent to the router with the correct NPDU destination.
+	return d.address(), d.ID, nil
 }
 
 // collect fans out a Who-Is to every target concurrently and merges the I-Am
@@ -203,7 +247,7 @@ func (c *Client) collect(ctx context.Context, targets []broadcastTarget, whoIs a
 				if wantInstance != 0 && ind.DeviceIdentifier.Instance() != wantInstance {
 					continue
 				}
-				key := fmt.Sprintf("%d|%d|%s", ind.DeviceIdentifier, ind.Source.Network, ind.Source.AddrPort)
+				key := fmt.Sprintf("%d|%d|%s|%x", ind.DeviceIdentifier, ind.Source.Network, ind.Source.AddrPort, ind.Source.MAC)
 				if _, dup := seen[key]; dup {
 					continue
 				}
@@ -258,6 +302,23 @@ func (b broadcastTarget) Address() netip.AddrPort { return b.address.AddrPort }
 // which interfaces are being probed.
 func (c *Client) BroadcastTargets() ([]broadcastTarget, error) {
 	return c.broadcastTargets()
+}
+
+// withGlobalBroadcast stamps each target's BACnet network number. When enabled,
+// the network is set to the global broadcast (0xFFFF) so routers forward the
+// Who-Is to every network they serve (reaching e.g. MS/TP devices behind a
+// router); the UDP datagram is still sent to the target's IP broadcast address.
+// When disabled the targets are returned unchanged (local network only).
+func withGlobalBroadcast(targets []broadcastTarget, enabled bool) []broadcastTarget {
+	if !enabled {
+		return targets
+	}
+	out := make([]broadcastTarget, len(targets))
+	for i, t := range targets {
+		t.address.Network = netprim.GlobalBroadcastNetwork
+		out[i] = t
+	}
+	return out
 }
 
 // broadcastTargets resolves the set of Who-Is destinations.

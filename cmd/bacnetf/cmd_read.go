@@ -26,7 +26,7 @@ func resolveAndReport(ctx context.Context, c *client.Client, deviceArg string) (
 		return client.Target{}, err
 	}
 	fmt.Printf("Resolved device %d -> %s\n", d.ID, d.Address)
-	return client.TargetAddr(d.Address), nil
+	return d.Target(), nil
 }
 
 // cmdRead implements: bacnetf read <device> <object> <property> [flags]

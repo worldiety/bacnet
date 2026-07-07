@@ -79,7 +79,7 @@ func (c *clientImpl) Discover(ctx context.Context, req DiscoverRequest) ([]IAmIn
 }
 
 func discoverDedupKey(indication IAmIndication) string {
-	return fmt.Sprintf("%d|%d|%x", indication.DeviceIdentifier, indication.Source.Network, indication.Source.AddrPort)
+	return fmt.Sprintf("%d|%d|%x|%x", indication.DeviceIdentifier, indication.Source.Network, indication.Source.AddrPort, indication.Source.MAC)
 }
 
 type iAmDispatcher struct {

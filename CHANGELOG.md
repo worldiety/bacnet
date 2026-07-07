@@ -9,6 +9,9 @@
 - client.PropertyValue now decodes and renders list-valued properties (e.g. object-list, state-text, property-list): added Values, Len(), IsList() and ObjectIDs(), and Display() renders a list as "[a, b, c]"
 - the bacnetf `props` command now uses ReadPropertyMultiple by default (with a --no-rpm opt-out)
 - added apdu.ReadPropertyResult.DecodeError() to decode a per-property RPM error into its error-class and error-code
+- discover devices behind a BACnet router: Discover/Resolve now send Who-Is as a global broadcast (DNET 0xFFFF) by default so routers forward it to remote networks (e.g. MS/TP segments); use client.WithLocalOnly (bacnetf discover --local-only) for a local-only Who-Is
+- address devices on remote networks: netprim.Address carries the originating network number and MAC (SNET/SADR) decoded from routed replies, and requests to such devices are sent to the router with the correct NPDU destination (DNET/DADR). client.Device gains MAC, IsRouted() and Target(); bacnetf discover shows the network and MAC for routed devices
+- added netprim.NewRoutedAddress and netprim.Address.IsRouted/String for remote-network (routed) stations
 
 ### Fix
 

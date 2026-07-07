@@ -35,6 +35,12 @@ func TargetAddr(ap netip.AddrPort) Target {
 	return Target{addr: netprim.NewAddressFromAddrPort(ap)}
 }
 
+// targetForAddress returns a Target that addresses a device by an already
+// resolved transport address, preserving any routing (remote network + MAC).
+func targetForAddress(addr netprim.Address) Target {
+	return Target{addr: addr}
+}
+
 // IsID reports whether the target is a device ID (requiring resolution).
 func (t Target) IsID() bool { return t.isID }
 
